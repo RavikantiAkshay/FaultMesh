@@ -1,0 +1,35 @@
+{
+  "name": "faultmesh",
+  "version": "1.0.0",
+  "description": "High-Precision Network & API Fault Injection Engine and Live Resilience Dashboard",
+  "type": "module",
+  "main": "dist/server.js",
+  "bin": {
+    "faultmesh": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "build": "tsc && node scripts/copy-assets.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "keywords": ["chaos-engineering", "fault-injection", "proxy", "resilience", "testing"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@vitest/coverage-v8": "^2.1.8",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

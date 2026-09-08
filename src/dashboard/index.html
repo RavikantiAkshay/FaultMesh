@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FaultMesh — Network Reliability &amp; Security Testing Suite</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Full-Width Header -->
+  <header class="app-header">
+    <div class="header-content">
+      <div class="header-left">
+        <span class="app-name">FaultMesh</span>
+        <span class="app-divider">/</span>
+        <span class="app-tagline">Automated API Resilience &amp; Security Audit Engine</span>
+      </div>
+      <div class="header-right">
+        <span class="proxy-status">Proxy on <strong>127.0.0.1:3001</strong> &rarr; Target on <strong>127.0.0.1:4000</strong></span>
+        <button id="themeToggle" class="btn-text">Switch Theme</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Full-Width Container -->
+  <main class="container">
+
+    <!-- ====================================================================
+         HERO SECTION: AUTOMATED AUDIT & DIAGNOSTICS SUITE (PRIMARY FEATURE)
+         ==================================================================== -->
+    <section class="section-box audit-suite-card">
+
+      <!-- Suite Header & Mode Tabs -->
+      <div class="audit-header-bar">
+        <div class="audit-title-area">
+          <div class="badge-row">
+            <span class="suite-badge">PRIMARY AUDIT SUITE</span>
+          </div>
+          <h2 id="diagHeaderTitle">Automated API Resilience Benchmark</h2>
+          <p id="diagHeaderSubtitle">Automated 5-point test suite evaluating client resilience against network delay, throttling, cuts, corruptions, and 503 outages.</p>
+        </div>
+
+        <div class="diag-tabs">
+          <button id="tabResilience" class="diag-tab active" type="button">Network Resilience (5 Checks)</button>
+          <button id="tabSecurity" class="diag-tab" type="button">Security &amp; Protocol (7 Checks)</button>
+          <button id="tabStorm" class="diag-tab" type="button">Traffic Storms &amp; DoS (4 Checks)</button>
+        </div>
+      </div>
+
+      <!-- Audit Banner: Score Summary & Action Runner -->
+      <div class="audit-banner">
+        <div class="score-summary">
+          <div class="score-pill">
+            <span id="scoreValue" class="score-number">--</span>
+            <span id="scoreGrade" class="score-label">UNTESTED</span>
+          </div>
+          <div class="score-text">
+            <strong id="scoreTitle">Ready to evaluate</strong>
+            <p id="scoreSubtitle">Select a target profile and click "Run Benchmark" to execute all 5 checks below.</p>
+          </div>
+        </div>
+
+        <div class="diagnostics-actions">
+          <select id="testTargetProfile" class="form-input select-profile" title="Target App Profile">
+            <option value="resilient">Target: Resilient App (Grade A)</option>
+            <option value="fragile">Target: Fragile App (Grade F)</option>
+          </select>
+          <button id="btnRunDiagnostics" class="btn-primary btn-run-diagnostics">Run 5-Point Benchmark</button>
+        </div>
+      </div>
+
+      <!-- Test Checklist & Results Area (Informs all checks upfront!) -->
+      <div class="checklist-container">
+        <div class="checklist-header">
+          <span class="checklist-title">Verification Criteria</span>
+          <span id="checklistCountTag" class="count-tag">5 checks ready</span>
+        </div>
+
+        <div id="diagnosticsResults" class="test-results-list">
+          <!-- Populated by JS upfront and updated on run -->
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ====================================================================
+         WORKBENCH SECTION: MANUAL SIMULATION & RESPONSE INSPECTION
+         ==================================================================== -->
+    <div class="workbench-section-header">
+      <div class="workbench-title-group">
+        <span class="workbench-badge">CHAOS SANDBOX</span>
+        <h3>Developer Workbench &amp; Live Request Inspector</h3>
+      </div>
+      <p>Manual fault injection and single-request debugging environment. Inject custom conditions into <strong>http://localhost:3001</strong> or test ad-hoc endpoints.</p>
+    </div>
+
+    <div class="columns-grid">
+
+      <!-- Left Column: All Rule Adders & Active State -->
+      <div class="column">
+        <section class="section-box">
+          <div class="section-header">
+            <h2>Network Fault Simulator (Manual Injections)</h2>
+            <p>Inject real-world network conditions into all traffic passing through <strong>http://localhost:3001</strong>.</p>
+          </div>
+
+          <!-- 1-Click Presets -->
+          <div class="adder-subgroup">
+            <div class="subgroup-label">1-Click Quick Presets</div>
+            <div class="scenario-table">
+              <div class="scenario-row">
+                <div class="scenario-desc">
+                  <strong>Slow Mobile Internet</strong>
+                  <span>16 KB/s speed cap + 350ms delay.</span>
+                </div>
+                <button id="btnPresetSlowMobile" class="btn-secondary" title="Activate rule and send test request">Enable &amp; Test</button>
+              </div>
+
+              <div class="scenario-row">
+                <div class="scenario-desc">
+                  <strong>Connection Drop</strong>
+                  <span>Abruptly closes socket after transferring 30 bytes.</span>
+                </div>
+                <button id="btnPresetDisconnect" class="btn-secondary" title="Activate rule and send test request">Enable &amp; Test</button>
+              </div>
+
+              <div class="scenario-row">
+                <div class="scenario-desc">
+                  <strong>Server Outage (503)</strong>
+                  <span>Forces proxy to return HTTP 503 Service Unavailable.</span>
+                </div>
+                <button id="btnPresetOutage" class="btn-secondary" title="Activate rule and send test request">Enable &amp; Test</button>
+              </div>
+
+              <div class="scenario-row">
+                <div class="scenario-desc">
+                  <strong>Corrupted Response</strong>
+                  <span>Truncates JSON payload to test client parsing resilience.</span>
+                </div>
+                <button id="btnPresetCorrupt" class="btn-secondary" title="Activate rule and send test request">Enable &amp; Test</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Custom Rule Builder -->
+          <div class="adder-subgroup custom-rule-section">
+            <div class="subgroup-label">Custom Rule Builder</div>
+            <form id="customRuleForm" class="form-layout">
+              <div class="form-row">
+                <div class="form-field">
+                  <label for="ruleTypeSelect">Condition</label>
+                  <select id="ruleTypeSelect" class="form-input">
+                    <option value="latency">Add Network Delay (Latency)</option>
+                    <option value="bandwidth">Limit Bandwidth (Speed Throttling)</option>
+                    <option value="cut">Drop Connection Mid-Download</option>
+                    <option value="corrupt">Corrupt Data (Truncate JSON)</option>
+                    <option value="status">Force HTTP Status Code</option>
+                  </select>
+                </div>
+
+                <div class="form-field">
+                  <label for="ruleDirectionSelect">Direction</label>
+                  <select id="ruleDirectionSelect" class="form-input">
+                    <option value="downstream">Responses (to client)</option>
+                    <option value="upstream">Requests (to server)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div id="dynamicRuleInputs" class="dynamic-row">
+                <!-- Rendered by JS -->
+              </div>
+
+              <button type="submit" class="btn-secondary btn-full">Add &amp; Activate Rule</button>
+            </form>
+          </div>
+        </section>
+
+        <!-- Current Active Rules -->
+        <section class="section-box">
+          <div class="section-header header-with-badge">
+            <div>
+              <h2>Active Simulation Rules</h2>
+              <p>Rules currently altering traffic passing through the proxy.</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span id="activeRulesCount" class="count-tag">0 active</span>
+              <button id="btnClearAllRules" class="btn-remove btn-sm" title="Clear all active rules">Reset All</button>
+            </div>
+          </div>
+
+          <div id="activeRulesList" class="rules-list">
+            <div class="empty-state">No rules active. All traffic passes through normally.</div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Right Column: Response Inspector -->
+      <div class="column">
+        <section id="responseInspector" class="section-box response-inspector-card">
+          <div class="section-header header-with-action">
+            <div>
+              <h2>Response Inspector (Live Testing)</h2>
+              <p>Inspect responses sent through middleman proxy (<code>http://localhost:3001</code>).</p>
+            </div>
+            <button id="btnCloseResponse" class="btn-text" title="Clear response viewer">Clear</button>
+          </div>
+
+          <!-- Test Action Bar (Endpoint Select + Send Button) -->
+          <div class="inspector-controls">
+            <select id="testEndpointSelect" class="form-input inspector-select">
+              <option value="/api/data">GET /api/data (Normal API)</option>
+              <option value="/api/users">GET /api/users (User Records)</option>
+              <option value="/api/crash">GET /api/crash (Crashing Server 500)</option>
+            </select>
+            <button id="btnSendTestRequest" class="btn-primary">Send Test Request</button>
+          </div>
+
+          <!-- Response Status & Metadata Bar -->
+          <div class="response-meta-bar">
+            <div class="meta-item">
+              <span class="meta-label">Status:</span>
+              <span id="respStatusBadge" class="status-pill">Ready</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Time:</span>
+              <span id="respDuration" class="response-meta">-- ms</span>
+            </div>
+            <div class="meta-item">
+              <span id="respAppliedRule" class="response-meta-rule">Rule: None</span>
+            </div>
+            <div class="meta-item" style="margin-left: auto;">
+              <span id="activeRulesIndicator" class="active-rules-pill">Traffic: Normal</span>
+            </div>
+          </div>
+
+          <!-- Feedback Status Text -->
+          <div id="testFeedback" class="test-status-text">Click "Send Test Request" or enable any scenario on the left to inspect responses.</div>
+
+          <!-- Formatted Response Payload Viewer -->
+          <div class="response-body-wrapper">
+            <pre id="responseBodyViewer" class="response-body-pre">(No response received yet. Select an endpoint above or click "Enable &amp; Test" on any scenario on the left.)</pre>
+          </div>
+
+          <!-- Terminal Helper Footnote -->
+          <div class="inspector-footer">
+            <span>Terminal: <code>curl -i http://localhost:3001/api/data</code></span>
+          </div>
+        </section>
+      </div>
+
+    </div>
+
+    <!-- ====================================================================
+         BOTTOM FULL-WIDTH SECTION: LIVE TRAFFIC LOG
+         ==================================================================== -->
+    <section class="section-box full-width-log-section">
+      <div class="section-header header-with-action">
+        <div>
+          <h2>Live Traffic Log</h2>
+          <p>Real-time HTTP requests routed through proxy (<code>127.0.0.1:3001</code>).</p>
+        </div>
+        <button id="btnClearLog" class="btn-text">Clear Log</button>
+      </div>
+
+      <div class="table-container full-width-table-container">
+        <table class="log-table">
+          <thead>
+            <tr>
+              <th style="width: 80px;">Method</th>
+              <th>Path</th>
+              <th style="width: 90px;">Status</th>
+              <th>Applied Rule</th>
+              <th style="width: 90px; text-align: right;">Time</th>
+            </tr>
+          </thead>
+          <tbody id="activityFeed">
+            <tr>
+              <td colspan="5" class="table-empty">Listening for requests through http://127.0.0.1:3001...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

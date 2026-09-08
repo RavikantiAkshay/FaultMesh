@@ -1,0 +1,294 @@
+import http, { IncomingMessage, ServerResponse } from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { ToxicPipeline } from './ToxicPipeline.js';
+import { TelemetryHub } from './TelemetryHub.js';
+import { ResilienceScorer } from '../scorer/ResilienceScorer.js';
+import { SecurityAuditor } from '../scorer/SecurityAuditor.js';
+import { TrafficStormAuditor } from '../scorer/TrafficStormAuditor.js';
+import { ToxicRule } from '../types.js';
+
+export class ControlApi {
+  private server: http.Server;
+  private port = 0;
+  private pipeline: ToxicPipeline;
+  private telemetryHub: TelemetryHub;
+  private scorer: ResilienceScorer;
+  private securityAuditor: SecurityAuditor;
+  private trafficStormAuditor: TrafficStormAuditor;
+  private dashboardDir: string;
+  private isRunning = false;
+
+  constructor(
+    port: number,
+    pipeline: ToxicPipeline,
+    telemetryHub: TelemetryHub,
+    scorer: ResilienceScorer,
+    securityAuditor?: SecurityAuditor,
+    trafficStormAuditor?: TrafficStormAuditor,
+    dashboardDir?: string
+  ) {
+    this.port = port;
+    this.pipeline = pipeline;
+    this.telemetryHub = telemetryHub;
+    this.scorer = scorer;
+    this.securityAuditor = securityAuditor || new SecurityAuditor('http://127.0.0.1:3001');
+    this.trafficStormAuditor = trafficStormAuditor || new TrafficStormAuditor('http://127.0.0.1:3001');
+
+    const currentDir = path.dirname(fileURLToPath(import.meta.url));
+    let resolvedDir = dashboardDir || path.resolve(currentDir, '../dashboard');
+    if (!fs.existsSync(resolvedDir)) {
+      const fallbackDir = path.resolve(currentDir, '../../src/dashboard');
+      if (fs.existsSync(fallbackDir)) {
+        resolvedDir = fallbackDir;
+      }
+    }
+    this.dashboardDir = resolvedDir;
+
+    this.server = http.createServer((req, res) => this.handleRequest(req, res));
+  }
+
+  private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+    const pathname = url.pathname;
+
+    // Enable CORS for local dashboards or external runners
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    // 1. SSE Stream
+    if (pathname === '/_faultmesh/telemetry/stream' && req.method === 'GET') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+      this.telemetryHub.registerSSEClient(res);
+      return;
+    }
+
+    // 2. Status & Metrics
+    if (pathname === '/_faultmesh/status' && req.method === 'GET') {
+      const rules = this.pipeline.getRules();
+      this.json(res, 200, {
+        status: 'online',
+        engine: 'FaultMesh v1.0.0',
+        metrics: this.telemetryHub.getMetrics(),
+        activeRules: rules,
+        activeToxics: rules, // backward compatibility
+      });
+      return;
+    }
+
+    // 3. Rules List
+    if ((pathname === '/_faultmesh/rules' || pathname === '/_faultmesh/toxics') && req.method === 'GET') {
+      this.json(res, 200, this.pipeline.getRules());
+      return;
+    }
+
+    // 4. Add / Update Rule
+    if ((pathname === '/_faultmesh/rules' || pathname === '/_faultmesh/toxics') && req.method === 'POST') {
+      const body = await this.readBody(req);
+      try {
+        const rule: ToxicRule = JSON.parse(body);
+        if (!rule.id || !rule.type || !rule.config) {
+          this.json(res, 400, { error: 'Invalid rule definition. Required: id, type, config' });
+          return;
+        }
+        this.pipeline.addRule(rule);
+        this.json(res, 201, { success: true, rule });
+      } catch (err: any) {
+        this.json(res, 400, { error: 'Malformed JSON payload', details: err.message });
+      }
+      return;
+    }
+
+    // 5. Delete Rule
+    const isDeleteSpecific = pathname.startsWith('/_faultmesh/rules/') || pathname.startsWith('/_faultmesh/toxics/');
+    if (isDeleteSpecific && req.method === 'DELETE') {
+      const prefix = pathname.startsWith('/_faultmesh/rules/') ? '/_faultmesh/rules/' : '/_faultmesh/toxics/';
+      const id = pathname.substring(prefix.length);
+      const removed = this.pipeline.removeRule(id);
+      this.json(res, removed ? 200 : 404, { success: removed, id });
+      return;
+    }
+
+    if ((pathname === '/_faultmesh/rules' || pathname === '/_faultmesh/toxics') && req.method === 'DELETE') {
+      this.pipeline.clearRules();
+      this.json(res, 200, { success: true, message: 'All simulation rules cleared' });
+      return;
+    }
+
+    // 6. Run Diagnostics / Health Check
+    const isRunTests = pathname === '/_faultmesh/diagnostics/run' || pathname === '/_faultmesh/tests/run' || pathname === '/_faultmesh/gauntlet/run';
+    if (isRunTests && req.method === 'POST') {
+      try {
+        let profile: 'resilient' | 'fragile' = 'resilient';
+        const queryProfile = url.searchParams.get('profile');
+        if (queryProfile === 'fragile' || queryProfile === 'resilient') {
+          profile = queryProfile;
+        } else {
+          const body = await this.readBody(req);
+          if (body) {
+            try {
+              const parsed = JSON.parse(body);
+              if (parsed.profile === 'fragile' || parsed.profile === 'resilient') {
+                profile = parsed.profile;
+              }
+            } catch {}
+          }
+        }
+        const scorecard = await this.scorer.runGauntlet(profile);
+        this.json(res, 200, scorecard);
+      } catch (err: any) {
+        this.json(res, 500, { error: 'Diagnostics execution error', details: err.message });
+      }
+      return;
+    }
+
+    // 7. Run Security & Protocol Audit
+    const isRunSecurity = pathname === '/_faultmesh/security/run' || pathname === '/_faultmesh/security/audit';
+    if (isRunSecurity && req.method === 'POST') {
+      try {
+        let profile: 'secure' | 'vulnerable' = 'secure';
+        const queryProfile = url.searchParams.get('profile');
+        if (queryProfile === 'secure' || queryProfile === 'vulnerable') {
+          profile = queryProfile;
+        } else {
+          const body = await this.readBody(req);
+          if (body) {
+            try {
+              const parsed = JSON.parse(body);
+              if (parsed.profile === 'secure' || parsed.profile === 'vulnerable') {
+                profile = parsed.profile;
+              }
+            } catch {}
+          }
+        }
+        const scorecard = await this.securityAuditor.runAudit(profile);
+        this.json(res, 200, scorecard);
+      } catch (err: any) {
+        this.json(res, 500, { error: 'Security audit execution error', details: err.message });
+      }
+      return;
+    }
+
+    // 8. Run Traffic Storm & DoS Resilience Audit
+    const isRunStorm = pathname === '/_faultmesh/storm/run' || pathname === '/_faultmesh/storm/audit';
+    if (isRunStorm && req.method === 'POST') {
+      try {
+        let profile: 'resilient' | 'fragile' = 'resilient';
+        const queryProfile = url.searchParams.get('profile');
+        if (queryProfile === 'fragile' || queryProfile === 'resilient') {
+          profile = queryProfile;
+        } else {
+          const body = await this.readBody(req);
+          if (body) {
+            try {
+              const parsed = JSON.parse(body);
+              if (parsed.profile === 'fragile' || parsed.profile === 'resilient') {
+                profile = parsed.profile;
+              }
+            } catch {}
+          }
+        }
+        const scorecard = await this.trafficStormAuditor.runStormSuite(profile);
+        this.json(res, 200, scorecard);
+      } catch (err: any) {
+        this.json(res, 500, { error: 'Traffic storm execution error', details: err.message });
+      }
+      return;
+    }
+
+    // 9. Static Dashboard Serving
+    if (req.method === 'GET') {
+      this.serveStatic(pathname, res);
+      return;
+    }
+
+    this.json(res, 404, { error: 'Route not found' });
+  }
+
+  private serveStatic(pathname: string, res: ServerResponse): void {
+    const safePath = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
+    const filePath = path.join(this.dashboardDir, safePath);
+
+    // Prevent directory traversal
+    if (!filePath.startsWith(this.dashboardDir)) {
+      this.json(res, 403, { error: 'Forbidden' });
+      return;
+    }
+
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      const ext = path.extname(filePath);
+      const contentTypes: Record<string, string> = {
+        '.html': 'text/html',
+        '.css': 'text/css',
+        '.js': 'application/javascript',
+        '.json': 'application/json',
+        '.svg': 'image/svg+xml',
+      };
+      res.writeHead(200, { 'Content-Type': contentTypes[ext] || 'text/plain' });
+      fs.createReadStream(filePath).pipe(res);
+    } else {
+      // Fallback to index.html for SPA if exists
+      const indexPath = path.join(this.dashboardDir, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        fs.createReadStream(indexPath).pipe(res);
+      } else {
+        this.json(res, 404, { error: 'File not found' });
+      }
+    }
+  }
+
+  private readBody(req: IncomingMessage): Promise<string> {
+    return new Promise((resolve, reject) => {
+      let data = '';
+      req.on('data', chunk => data += chunk);
+      req.on('end', () => resolve(data));
+      req.on('error', reject);
+    });
+  }
+
+  private json(res: ServerResponse, status: number, data: any): void {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(data));
+  }
+
+  start(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.server.listen(this.port, () => {
+        const address = this.server.address();
+        if (address && typeof address === 'object') {
+          this.port = address.port;
+        }
+        this.isRunning = true;
+        resolve();
+      });
+      this.server.once('error', reject);
+    });
+  }
+
+  stop(): Promise<void> {
+    return new Promise((resolve) => {
+      if (!this.isRunning) return resolve();
+      this.server.close(() => {
+        this.isRunning = false;
+        resolve();
+      });
+    });
+  }
+
+  getPort(): number {
+    return this.port;
+  }
+}

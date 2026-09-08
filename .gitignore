@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build artifacts & test coverage
+dist/
+coverage/
+
+# Logs & temp
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment & local config
+.env
+.env.local
+.DS_Store
+Thumbs.db
+
+# Assistant & workspace files
+.agents/
+AGENTS.md
+GEMINI.md
