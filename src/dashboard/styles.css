@@ -1118,3 +1118,159 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================================================
+   TARGET URL CONTROLLER (HEADER)
+   ========================================================================== */
+.target-url-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  padding: 3px 8px;
+  border-radius: var(--radius);
+}
+
+.target-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.input-target-url {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  width: 170px;
+}
+
+.input-target-url:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
+.btn-target-apply {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+  border: none;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-target-apply:hover {
+  background: var(--text-main);
+}
+
+/* ==========================================================================
+   SCORECARD EXPORT CONTROLS
+   ========================================================================== */
+.export-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-export {
+  font-size: 11px;
+  padding: 7px 12px;
+}
+
+/* ==========================================================================
+   CODE FIX REMEDIATION BOXES
+   ========================================================================== */
+.btn-toggle-snippet {
+  background: transparent;
+  border: 1px solid var(--border-default);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.btn-toggle-snippet:hover {
+  color: var(--text-main);
+  border-color: var(--border-focus);
+}
+
+.snippet-container {
+  margin-top: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  overflow: hidden;
+}
+
+.snippet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 6px 10px;
+}
+
+.snippet-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.snippet-tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.snippet-tab-btn.active {
+  background: var(--bg-subtle);
+  border-color: var(--border-default);
+  color: var(--text-main);
+}
+
+.btn-copy-snippet {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-copy-snippet:hover {
+  color: var(--text-main);
+  border-color: var(--border-focus);
+}
+
+.snippet-code-content {
+  margin: 0;
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-main);
+  background: var(--bg-subtle);
+  overflow-x: auto;
+  white-space: pre;
+}

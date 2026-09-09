@@ -17,7 +17,12 @@
         <span class="app-tagline">Automated API Resilience &amp; Security Audit Engine</span>
       </div>
       <div class="header-right">
-        <span class="proxy-status">Proxy on <strong>127.0.0.1:3001</strong> &rarr; Target on <strong>127.0.0.1:4000</strong></span>
+        <div class="target-url-control">
+          <label for="targetUrlInput" class="target-label">Target API:</label>
+          <input type="text" id="targetUrlInput" class="input-target-url" value="http://127.0.0.1:4000" placeholder="http://localhost:8000" spellcheck="false" title="Target backend URL to audit and proxy">
+          <button id="btnSetTargetUrl" class="btn-target-apply" type="button" title="Switch the proxy target backend">Set Target</button>
+        </div>
+        <span class="proxy-status">Proxy: <strong>:3001</strong></span>
         <button id="themeToggle" class="btn-text">Switch Theme</button>
       </div>
     </div>
@@ -62,6 +67,10 @@
         </div>
 
         <div class="diagnostics-actions">
+          <div class="export-btn-group" id="exportGroup" style="display: none;">
+            <button id="btnExportMd" class="btn-secondary btn-export" type="button" title="Download formatted Markdown scorecard">Export Markdown</button>
+            <button id="btnExportJson" class="btn-secondary btn-export" type="button" title="Download raw JSON scorecard">Export JSON</button>
+          </div>
           <select id="testTargetProfile" class="form-input select-profile" title="Target App Profile">
             <option value="resilient">Target: Resilient App (Grade A)</option>
             <option value="fragile">Target: Fragile App (Grade F)</option>
@@ -165,6 +174,11 @@
                     <option value="downstream">Responses (to client)</option>
                     <option value="upstream">Requests (to server)</option>
                   </select>
+                </div>
+
+                <div class="form-field">
+                  <label for="rulePathPattern">Path Filter (Optional)</label>
+                  <input type="text" id="rulePathPattern" class="form-input" placeholder="e.g. /api/checkout (blank = all)" title="Only inject fault when request path matches this pattern">
                 </div>
               </div>
 

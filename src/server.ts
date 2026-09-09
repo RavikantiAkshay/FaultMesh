@@ -171,7 +171,7 @@ export async function startFaultMesh(options: FaultMeshOptions = {}): Promise<Fa
   const scorer = new ResilienceScorer(`http://127.0.0.1:${proxyPort}`, pipeline);
   const securityAuditor = new SecurityAuditor(`http://127.0.0.1:${proxyPort}`);
   const trafficStormAuditor = new TrafficStormAuditor(`http://127.0.0.1:${proxyPort}`);
-  const controlApi = new ControlApi(dashboardPort, pipeline, telemetryHub, scorer, securityAuditor, trafficStormAuditor);
+  const controlApi = new ControlApi(dashboardPort, pipeline, telemetryHub, scorer, securityAuditor, trafficStormAuditor, undefined, proxy);
 
   await controlApi.start();
   console.log(`  [Dashboard]      http://localhost:${dashboardPort}`);

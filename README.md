@@ -93,6 +93,19 @@ Inspect every HTTP request passing through the proxy in real time with status pi
 
 ---
 
+## Security & Local Permissions
+
+FaultMesh runs locally with strict least-privilege principles:
+* **Zero Child Processes:** FaultMesh does not spawn shells or execute external binaries (`child_process.exec` is not used).
+* **Strict Path Confinement:** The dashboard web server applies canonical path jailing to prevent directory traversal outside `dist/dashboard`.
+* **In-Memory Telemetry:** Telemetry and request payloads are kept in an ephemeral in-memory ring buffer; nothing is logged to disk.
+* **Non-Destructive Probing:** All security probes (canaries, traversal, storm bursts) are read-only and inert.
+
+For full architectural details, see [docs/SECURITY.md](docs/SECURITY.md).
+
+---
+
 ## License
 
 MIT License.
+

@@ -46,12 +46,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const scoreSubtitle = document.getElementById('scoreSubtitle');
   const diagnosticsResults = document.getElementById('diagnosticsResults');
 
+  const targetUrlInput = document.getElementById('targetUrlInput');
+  const btnSetTargetUrl = document.getElementById('btnSetTargetUrl');
+  const exportGroup = document.getElementById('exportGroup');
+  const btnExportMd = document.getElementById('btnExportMd');
+  const btnExportJson = document.getElementById('btnExportJson');
+  const rulePathPattern = document.getElementById('rulePathPattern');
+
   const activityFeed = document.getElementById('activityFeed');
   const btnClearLog = document.getElementById('btnClearLog');
 
   let activeRules = [];
   let isRunningDiagnostics = false;
   let currentDiagMode = 'resilience';
+  let lastScorecardData = null;
 
   // 1. Theme Management (Clean Light / Neutral Dark)
   function initTheme() {
@@ -66,6 +74,51 @@ document.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem('faultmesh_theme', next);
   });
   initTheme();
+
+  // Target URL Management
+  async function loadTargetUrl() {
+    try {
+      const res = await fetch('/_faultmesh/config/target');
+      const data = await res.json();
+      if (data.targetUrl && targetUrlInput) {
+        targetUrlInput.value = data.targetUrl;
+      }
+    } catch (err) {
+      console.warn('Failed to load target URL:', err);
+    }
+  }
+
+  if (btnSetTargetUrl && targetUrlInput) {
+    btnSetTargetUrl.addEventListener('click', async () => {
+      const targetUrl = targetUrlInput.value.trim();
+      if (!targetUrl) return;
+      btnSetTargetUrl.disabled = true;
+      btnSetTargetUrl.textContent = 'Updating...';
+      try {
+        const res = await fetch('/_faultmesh/config/target', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetUrl }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          btnSetTargetUrl.textContent = 'Updated!';
+          setTimeout(() => {
+            btnSetTargetUrl.textContent = 'Set Target';
+            btnSetTargetUrl.disabled = false;
+          }, 1500);
+        } else {
+          alert('Error: ' + (data.details || data.error || 'Failed to update target URL'));
+          btnSetTargetUrl.textContent = 'Set Target';
+          btnSetTargetUrl.disabled = false;
+        }
+      } catch (err) {
+        alert('Network error: ' + err.message);
+        btnSetTargetUrl.textContent = 'Set Target';
+        btnSetTargetUrl.disabled = false;
+      }
+    });
+  }
 
   // 2. Response Inspector Panel
   if (btnCloseResponse) {
@@ -237,14 +290,19 @@ document.addEventListener('DOMContentLoaded', () => {
   function formatRuleDetail(r) {
     const c = r.config || {};
     const dir = r.direction === 'downstream' ? 'Responses' : 'Requests';
+    let detail = '';
     switch (r.type) {
-      case 'latency': return `${dir} delayed +${c.latencyMs}ms (${c.jitterMs ? `±${c.jitterMs}ms` : 'fixed'})`;
-      case 'bandwidth': return `${dir} capped at ${c.rateKbps} kbps`;
-      case 'cut': return `Socket dropped after ${c.cutAfterBytes} bytes`;
-      case 'corrupt': return `Corrupted response (${c.corruptType || 'truncate'})`;
-      case 'status': return `Returning HTTP ${c.statusCode}`;
-      default: return JSON.stringify(c);
+      case 'latency': detail = `${dir} delayed +${c.latencyMs}ms (${c.jitterMs ? `±${c.jitterMs}ms` : 'fixed'})`; break;
+      case 'bandwidth': detail = `${dir} capped at ${c.rateKbps} kbps`; break;
+      case 'cut': detail = `Socket dropped after ${c.cutAfterBytes} bytes`; break;
+      case 'corrupt': detail = `Corrupted response (${c.corruptType || 'truncate'})`; break;
+      case 'status': detail = `Returning HTTP ${c.statusCode}`; break;
+      default: detail = JSON.stringify(c);
     }
+    if (r.pathPattern) {
+      detail += ` | Path: ${r.pathPattern}`;
+    }
+    return detail;
   }
 
   window.deleteRule = async function(id) {
@@ -306,11 +364,16 @@ document.addEventListener('DOMContentLoaded', () => {
         break;
     }
 
+    const pathPattern = rulePathPattern ? (rulePathPattern.value.trim() || undefined) : undefined;
+    if (pathPattern) {
+      name += ` (${pathPattern})`;
+    }
+
     try {
       await fetch('/_faultmesh/rules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, name, type, direction, enabled: true, config }),
+        body: JSON.stringify({ id, name, type, direction, enabled: true, config, pathPattern }),
       });
       await refreshStatus();
       executeTestRequest();
@@ -609,6 +672,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (tabResilience) tabResilience.classList.remove('active');
     if (tabSecurity) tabSecurity.classList.remove('active');
     if (tabStorm) tabStorm.classList.remove('active');
+    if (exportGroup) exportGroup.style.display = 'none';
 
     if (mode === 'storm') {
       if (tabStorm) tabStorm.classList.add('active');
@@ -670,90 +734,491 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  btnRunDiagnostics.addEventListener('click', async () => {
-    if (isRunningDiagnostics) return;
-    isRunningDiagnostics = true;
-    btnRunDiagnostics.disabled = true;
+  if (btnRunDiagnostics) {
+    btnRunDiagnostics.addEventListener('click', async () => {
+      if (isRunningDiagnostics) return;
+      isRunningDiagnostics = true;
+      btnRunDiagnostics.disabled = true;
 
-    if (currentDiagMode === 'storm') {
-      btnRunDiagnostics.textContent = 'Auditing...';
-      scoreTitle.textContent = 'Running Traffic Storm Benchmark...';
-      scoreSubtitle.textContent = 'Auditing HTTP 429 rate limit backoff, oversized payloads (413), slowloris drips, and duplicate POST idempotency.';
+      if (currentDiagMode === 'storm') {
+        btnRunDiagnostics.textContent = 'Auditing...';
+        scoreTitle.textContent = 'Running Traffic Storm Benchmark...';
+        scoreSubtitle.textContent = 'Auditing HTTP 429 rate limit backoff, oversized payloads (413), slowloris drips, and duplicate POST idempotency.';
 
-      const profile = testTargetProfile ? testTargetProfile.value : 'resilient';
+        const profile = testTargetProfile ? testTargetProfile.value : 'resilient';
 
-      try {
-        const res = await fetch(`/_faultmesh/storm/run?profile=${encodeURIComponent(profile)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profile }),
-        });
-        const report = await res.json();
-        renderTrafficStormReport(report);
-        refreshStatus();
-      } catch (err) {
-        console.error('Traffic storm error:', err);
-        scoreTitle.textContent = 'Traffic Storm Audit Failed';
-        scoreSubtitle.textContent = err.message;
-      } finally {
-        isRunningDiagnostics = false;
-        btnRunDiagnostics.disabled = false;
-        btnRunDiagnostics.textContent = 'Run Traffic Storm Benchmark';
+        try {
+          const res = await fetch(`/_faultmesh/storm/run?profile=${encodeURIComponent(profile)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ profile }),
+          });
+          const report = await res.json();
+          renderTrafficStormReport(report);
+          refreshStatus();
+        } catch (err) {
+          console.error('Traffic storm error:', err);
+          scoreTitle.textContent = 'Traffic Storm Audit Failed';
+          scoreSubtitle.textContent = err.message;
+        } finally {
+          isRunningDiagnostics = false;
+          btnRunDiagnostics.disabled = false;
+          btnRunDiagnostics.textContent = 'Run Traffic Storm Benchmark';
+        }
+      } else if (currentDiagMode === 'security') {
+        btnRunDiagnostics.textContent = 'Auditing...';
+        scoreTitle.textContent = 'Running Security Audit...';
+        scoreSubtitle.textContent = 'Auditing defensive headers, CORS safety, query secret leakage, response PII, and inert canary probes.';
+
+        const profile = testTargetProfile ? testTargetProfile.value : 'secure';
+
+        try {
+          const res = await fetch(`/_faultmesh/security/run?profile=${encodeURIComponent(profile)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ profile }),
+          });
+          const report = await res.json();
+          renderSecurityReport(report);
+          refreshStatus();
+        } catch (err) {
+          console.error('Security audit error:', err);
+          scoreTitle.textContent = 'Security Audit Failed';
+          scoreSubtitle.textContent = err.message;
+        } finally {
+          isRunningDiagnostics = false;
+          btnRunDiagnostics.disabled = false;
+          btnRunDiagnostics.textContent = 'Run Security Audit';
+        }
+      } else {
+        btnRunDiagnostics.textContent = 'Running...';
+        scoreTitle.textContent = 'Running 5-Point Benchmark...';
+        scoreSubtitle.textContent = 'Evaluating delay, slow speed, connection drops, corrupted JSON, and 503 errors.';
+
+        const profile = testTargetProfile ? testTargetProfile.value : 'resilient';
+
+        try {
+          const res = await fetch(`/_faultmesh/diagnostics/run?profile=${encodeURIComponent(profile)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ profile }),
+          });
+          const report = await res.json();
+          renderDiagnosticsReport(report);
+          refreshStatus();
+        } catch (err) {
+          console.error('Diagnostics error:', err);
+          scoreTitle.textContent = 'Diagnostics Failed';
+          scoreSubtitle.textContent = err.message;
+        } finally {
+          isRunningDiagnostics = false;
+          btnRunDiagnostics.disabled = false;
+          btnRunDiagnostics.textContent = 'Run 5-Point Benchmark';
+        }
       }
-    } else if (currentDiagMode === 'security') {
-      btnRunDiagnostics.textContent = 'Auditing...';
-      scoreTitle.textContent = 'Running Security Audit...';
-      scoreSubtitle.textContent = 'Auditing defensive headers, CORS safety, query secret leakage, response PII, and inert canary probes.';
+    });
+  }
 
-      const profile = testTargetProfile ? testTargetProfile.value : 'secure';
+  // Remediation Code Snippets Catalog
+  const REMEDIATION_SNIPPETS = {
+    'Response Delay Handling (300ms)': {
+      express: `// Express / Node HTTP Client Timeout Handling
+const controller = new AbortController();
+const timeout = setTimeout(() => controller.abort(), 3000); // 3s SLA timeout
 
-      try {
-        const res = await fetch(`/_faultmesh/security/run?profile=${encodeURIComponent(profile)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profile }),
-        });
-        const report = await res.json();
-        renderSecurityReport(report);
-        refreshStatus();
-      } catch (err) {
-        console.error('Security audit error:', err);
-        scoreTitle.textContent = 'Security Audit Failed';
-        scoreSubtitle.textContent = err.message;
-      } finally {
-        isRunningDiagnostics = false;
-        btnRunDiagnostics.disabled = false;
-        btnRunDiagnostics.textContent = 'Run Security Audit';
-      }
-    } else {
-      btnRunDiagnostics.textContent = 'Running...';
-      scoreTitle.textContent = 'Running 5-Point Benchmark...';
-      scoreSubtitle.textContent = 'Evaluating delay, slow speed, connection drops, corrupted JSON, and 503 errors.';
+try {
+  const res = await fetch('http://api.backend.internal/data', { signal: controller.signal });
+  return await res.json();
+} catch (err) {
+  if (err.name === 'AbortError') {
+    return { status: 'degraded', data: [] }; // Graceful degradation fallback
+  }
+  throw err;
+} finally {
+  clearTimeout(timeout);
+}`,
+      fastapi: `# Python / httpx Client SLA Timeout
+import httpx
 
-      const profile = testTargetProfile ? testTargetProfile.value : 'resilient';
+try:
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        response = await client.get("http://api.backend.internal/data")
+        return response.json()
+except httpx.TimeoutException:
+    return {"status": "degraded", "data": []}  # Graceful fallback`
+    },
 
-      try {
-        const res = await fetch(`/_faultmesh/diagnostics/run?profile=${encodeURIComponent(profile)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profile }),
-        });
-        const report = await res.json();
-        renderDiagnosticsReport(report);
-        refreshStatus();
-      } catch (err) {
-        console.error('Diagnostics error:', err);
-        scoreTitle.textContent = 'Diagnostics Failed';
-        scoreSubtitle.textContent = err.message;
-      } finally {
-        isRunningDiagnostics = false;
-        btnRunDiagnostics.disabled = false;
-        btnRunDiagnostics.textContent = 'Run 5-Point Benchmark';
-      }
+    'Bandwidth Throttling (Speed Cap)': {
+      express: `// Streaming chunk processor with backpressure handling
+const res = await fetch(url);
+const reader = res.body.getReader();
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  processChunkProgressively(value);
+}`,
+      fastapi: `# Streaming response chunk processor
+import httpx
+
+async with httpx.AsyncClient() as client:
+    async with client.stream("GET", url) as response:
+        async for chunk in response.aiter_bytes():
+            process_chunk_incrementally(chunk)`
+    },
+
+    'Connection Cut (Abrupt Socket Drop)': {
+      express: `// Retry with Exponential Backoff on Socket Drop / ECONNRESET
+async function fetchWithRetry(url, retries = 3, delay = 500) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fetch(url);
+    } catch (err) {
+      if (i === retries - 1) throw err;
+      await new Promise(r => setTimeout(r, delay * Math.pow(2, i)));
     }
+  }
+}`,
+      fastapi: `# Tenacity retry on connection errors
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import httpx
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=0.5), retry=retry_if_exception_type(httpx.NetworkError))
+async def safe_fetch(url: str):
+    async with httpx.AsyncClient() as client:
+        return await client.get(url)`
+    },
+
+    'Corrupted / Truncated JSON Payload': {
+      express: `// Safe JSON Parser with Fallback Boundary
+let parsedData;
+try {
+  parsedData = JSON.parse(responseText);
+} catch (err) {
+  console.warn("Payload corrupted or truncated mid-stream. Triggering safe fallback.");
+  parsedData = { fallback: true, error: "Malformed payload received" };
+}`,
+      fastapi: `# Pydantic validation error boundary
+import json
+from pydantic import ValidationError
+
+try:
+    data = json.loads(response_text)
+    validated = MyResponseModel.model_validate(data)
+except (json.JSONDecodeError, ValidationError):
+    validated = MyResponseModel(fallback=True, items=[])`
+    },
+
+    'Server Outage (503 Service Unavailable)': {
+      express: `// 503 Circuit Breaker & Status Fallback
+if (res.status === 503) {
+  const retryAfter = res.headers.get('Retry-After') || '5';
+  console.info(\`Upstream busy. Backing off for \${retryAfter} seconds.\`);
+  return { degraded: true, message: "Service busy, please retry shortly" };
+}`,
+      fastapi: `# 503 Status Handler with Retry-After respect
+if response.status_code == 503:
+    retry_after = int(response.headers.get("Retry-After", 5))
+    logger.warning(f"Upstream service unavailable. Backing off for {retry_after}s.")
+    return {"degraded": True, "message": "Service unavailable"}`
+    },
+
+    'Defensive Security Headers': {
+      express: `// Add Helmet.js to automatically inject defensive headers
+import helmet from 'helmet';
+app.use(helmet());
+
+// Or configure manually in Express:
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  next();
+});`,
+      fastapi: `# Custom Security Headers Middleware in FastAPI
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)`
+    },
+
+    'CORS Origin & Credential Safety': {
+      express: `// Strict Whitelist CORS (Never use origin: '*' with credentials)
+import cors from 'cors';
+
+const allowedOrigins = ['https://app.yourdomain.com'];
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) callback(null, true);
+    else callback(new Error('Blocked by CORS'));
+  },
+  credentials: true
+}));`,
+      fastapi: `# Strict CORS Middleware in FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://app.yourdomain.com"], # Explicit origin required
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)`
+    },
+
+    'URL Credential & Secret Exposure': {
+      express: `// Consume tokens via Authorization header, reject query tokens
+app.use((req, res, next) => {
+  if (req.query.token || req.query.apiKey) {
+    return res.status(400).json({ error: "Pass credentials in Authorization header, not in query string." });
+  }
+  next();
+});`,
+      fastapi: `# OAuth2 / Bearer Token Header Authentication
+from fastapi import Depends, HTTPException, Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+security = HTTPBearer()
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)):
+    token = credentials.credentials
+    return verify_token(token)`
+    },
+
+    'Outbound Response PII & Secret Scanner': {
+      express: `// Exclude passwords and internal keys before serialization
+function sanitizeUser(user) {
+  const { passwordHash, internalSecret, ...safeUser } = user;
+  return safeUser;
+}
+
+res.json(sanitizeUser(userRecord));`,
+      fastapi: `# Use Pydantic response_model to prevent leaking private fields
+class UserPublic(BaseModel):
+    id: int
+    username: str
+    email: EmailStr
+    # password_hash and internal_token are excluded
+
+@app.get("/users/me", response_model=UserPublic)
+async def read_current_user():
+    return user_record`
+    },
+
+    'Error Sanitization & Stack Trace Exposure': {
+      express: `// Global Production Error Sanitizer (Hide stack traces from clients)
+app.use((err, req, res, next) => {
+  console.error(err); // Log internally to server stdout
+  res.status(500).json({
+    error: "Internal Server Error",
+    requestId: req.id
   });
+});`,
+      fastapi: `# Production Exception Handler
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal Server Error", "requestId": request.state.request_id}
+    )`
+    },
+
+    'Path Traversal & Directory Escape (../)': {
+      express: `// Safe Path Resolution with Boundary Jailing
+import path from 'node:path';
+
+function getSafeFile(userPath) {
+  const baseDir = path.resolve('/var/www/uploads');
+  const safePath = path.resolve(baseDir, userPath);
+  if (!safePath.startsWith(baseDir + path.sep)) {
+    throw new Error('Access Denied: Path Traversal Detected');
+  }
+  return safePath;
+}`,
+      fastapi: `# Safe Path Resolution in Python
+from pathlib import Path
+
+def get_safe_filepath(user_filename: str) -> Path:
+    base_dir = Path("/var/www/uploads").resolve()
+    target_path = (base_dir / user_filename).resolve()
+    if not target_path.is_relative_to(base_dir):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    return target_path`
+    },
+
+    'Safe SQL/NoSQL & Canary Input Probing': {
+      express: `// Use Parameterized Queries (e.g. pg, mysql2, or Prisma ORM)
+// NEVER do: db.query(\`SELECT * FROM users WHERE id = '\${userId}'\`)
+
+// ALWAYS do:
+const result = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);`,
+      fastapi: `# Use SQLAlchemy / SQLModel Parameterized Statements
+from sqlalchemy import select
+
+# Safe parameterized query:
+stmt = select(User).where(User.username == username_input)
+result = await session.execute(stmt)`
+    },
+
+    'Rate Limit Back-off & Retry Storm Handling': {
+      express: `// Express Rate Limit Middleware
+import rateLimit from 'express-rate-limit';
+
+const limiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // Limit each IP to 60 requests per minute
+  standardHeaders: true, // Return RateLimit-* headers
+  legacyHeaders: false,
+});
+
+app.use('/api/', limiter);`,
+      fastapi: `# SlowAPI Rate Limiting for FastAPI
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@app.get("/api/data")
+@limiter.limit("60/minute")
+async def get_data(request: Request):
+    return {"status": "ok"}`
+    },
+
+    'Oversized Payload & Buffer OOM Defense (HTTP 413)': {
+      express: `// Restrict JSON Body Parsing Limit
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));`,
+      fastapi: `# Request Body Size Limiter Middleware in FastAPI
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
+
+class ContentLengthLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > 5 * 1024 * 1024: # 5 MB
+            return JSONResponse({"error": "Payload Too Large"}, status_code=413)
+        return await call_next(request)
+
+app.add_middleware(ContentLengthLimitMiddleware)`
+    },
+
+    'Slowloris Connection Drip Defense': {
+      express: `// Node HTTP Server Timeout Protection
+const server = app.listen(port);
+
+server.headersTimeout = 20000; // 20s
+server.requestTimeout = 30000; // 30s
+server.keepAliveTimeout = 5000; // 5s`,
+      fastapi: `# Uvicorn Timeout Configuration
+# Run uvicorn with strict timeout flags:
+# uvicorn main:app --timeout-keep-alive 5 --timeout-graceful-shutdown 30`
+    },
+
+    'Duplicate Request Idempotency Protection': {
+      express: `// Idempotency Middleware using Redis / In-Memory Cache
+app.post('/api/checkout', async (req, res) => {
+  const key = req.headers['idempotency-key'];
+  if (!key) return res.status(400).json({ error: "Missing Idempotency-Key" });
+
+  const cached = await redis.get(\`idemp:\${key}\`);
+  if (cached) return res.json(JSON.parse(cached));
+
+  const result = await processTransaction(req.body);
+  await redis.set(\`idemp:\${key}\`, JSON.stringify(result), 'EX', 86400);
+  res.json(result);
+});`,
+      fastapi: `# Idempotency Key Middleware
+from fastapi import Header, HTTPException
+
+@app.post("/api/checkout")
+async def checkout(idempotency_key: str = Header(None)):
+    if not idempotency_key:
+        raise HTTPException(status_code=400, detail="Missing Idempotency-Key")
+    
+    cached = await redis_client.get(f"idemp:{idempotency_key}")
+    if cached:
+        return json.loads(cached)
+        
+    result = await process_order()
+    await redis_client.set(f"idemp:{idempotency_key}", json.dumps(result), ex=86400)
+    return result`
+    }
+  };
+
+  function renderSnippetBlock(checkName, uniqueId) {
+    const snippet = REMEDIATION_SNIPPETS[checkName];
+    if (!snippet) return '';
+
+    return `
+      <button class="btn-toggle-snippet" type="button" onclick="window.toggleSnippet('${uniqueId}')">
+        View Remediation Snippet
+      </button>
+      <div id="${uniqueId}" class="snippet-container" style="display: none;">
+        <div class="snippet-header">
+          <div class="snippet-tabs">
+            <button class="snippet-tab-btn active" type="button" onclick="window.switchSnippetTab('${uniqueId}', 'express')">Express / Node</button>
+            <button class="snippet-tab-btn" type="button" onclick="window.switchSnippetTab('${uniqueId}', 'fastapi')">FastAPI / Python</button>
+          </div>
+          <button class="btn-copy-snippet" type="button" onclick="window.copySnippetCode('${uniqueId}', this)">Copy Code</button>
+        </div>
+        <pre class="snippet-code-content" data-express="${escapeHtml(snippet.express)}" data-fastapi="${escapeHtml(snippet.fastapi)}">${escapeHtml(snippet.express)}</pre>
+      </div>
+    `;
+  }
+
+  window.toggleSnippet = function(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  };
+
+  window.switchSnippetTab = function(containerId, lang) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const pre = container.querySelector('.snippet-code-content');
+    const tabs = container.querySelectorAll('.snippet-tab-btn');
+    tabs.forEach(t => t.classList.remove('active'));
+    
+    const clicked = Array.from(tabs).find(t => t.textContent.toLowerCase().includes(lang === 'express' ? 'express' : 'fastapi'));
+    if (clicked) clicked.classList.add('active');
+
+    if (pre) {
+      pre.textContent = pre.getAttribute(`data-${lang}`) || '';
+    }
+  };
+
+  window.copySnippetCode = function(containerId, btnEl) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const pre = container.querySelector('.snippet-code-content');
+    if (!pre) return;
+    navigator.clipboard.writeText(pre.textContent).then(() => {
+      if (btnEl) {
+        const orig = btnEl.textContent;
+        btnEl.textContent = 'Copied!';
+        setTimeout(() => { btnEl.textContent = orig; }, 1500);
+      }
+    });
+  };
 
   function renderDiagnosticsReport(report) {
+    lastScorecardData = { mode: 'resilience', report, timestamp: new Date().toISOString() };
+    if (exportGroup) exportGroup.style.display = 'flex';
+
     scoreValue.textContent = `${report.score}/100`;
     scoreGrade.textContent = `GRADE ${report.grade}`;
 
@@ -777,6 +1242,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const num = String(idx + 1).padStart(2, '0');
       const rowClass = r.passed ? 'row-passed' : 'row-failed';
       const findingClass = r.passed ? 'finding-pass' : 'finding-fail';
+      const snippetHtml = !r.passed ? renderSnippetBlock(r.name, `snip_res_${idx}`) : '';
 
       return `
         <div class="test-row ${rowClass}">
@@ -791,6 +1257,7 @@ document.addEventListener('DOMContentLoaded', () => {
               <div class="test-finding-box ${findingClass}">
                 Finding: ${escapeHtml(r.details)}
               </div>
+              ${snippetHtml}
             </div>
           </div>
           <div class="test-row-aside">
@@ -812,6 +1279,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderSecurityReport(report) {
+    lastScorecardData = { mode: 'security', report, timestamp: new Date().toISOString() };
+    if (exportGroup) exportGroup.style.display = 'flex';
+
     scoreValue.textContent = `${report.score}/100`;
     scoreGrade.textContent = `GRADE ${report.grade}`;
 
@@ -834,6 +1304,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const num = String(idx + 1).padStart(2, '0');
       const rowClass = c.passed ? 'row-passed' : 'row-failed';
       const findingClass = c.passed ? 'finding-pass' : 'finding-fail';
+      const snippetHtml = !c.passed ? renderSnippetBlock(c.name, `snip_sec_${idx}`) : '';
 
       return `
         <div class="test-row ${rowClass}">
@@ -849,6 +1320,7 @@ document.addEventListener('DOMContentLoaded', () => {
               <div class="test-finding-box ${findingClass}">
                 Finding: ${escapeHtml(c.details)}
               </div>
+              ${snippetHtml}
             </div>
           </div>
           <div class="test-row-aside">
@@ -870,6 +1342,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderTrafficStormReport(report) {
+    lastScorecardData = { mode: 'storm', report, timestamp: new Date().toISOString() };
+    if (exportGroup) exportGroup.style.display = 'flex';
+
     scoreValue.textContent = `${report.score}/100`;
     scoreGrade.textContent = `GRADE ${report.grade}`;
 
@@ -892,6 +1367,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const num = String(idx + 1).padStart(2, '0');
       const rowClass = c.passed ? 'row-passed' : 'row-failed';
       const findingClass = c.passed ? 'finding-pass' : 'finding-fail';
+      const snippetHtml = !c.passed ? renderSnippetBlock(c.name, `snip_storm_${idx}`) : '';
 
       return `
         <div class="test-row ${rowClass}">
@@ -907,6 +1383,7 @@ document.addEventListener('DOMContentLoaded', () => {
               <div class="test-finding-box ${findingClass}">
                 Finding: ${escapeHtml(c.details)}
               </div>
+              ${snippetHtml}
             </div>
           </div>
           <div class="test-row-aside">
@@ -925,6 +1402,71 @@ document.addEventListener('DOMContentLoaded', () => {
         </ul>
       </div>
     `;
+  }
+
+  // Export functions
+  function exportMarkdownReport() {
+    if (!lastScorecardData || !lastScorecardData.report) {
+      alert('No audit report available to export. Run a benchmark first.');
+      return;
+    }
+    const { mode, report, timestamp } = lastScorecardData;
+    const checks = report.checks || report.results || [];
+
+    let md = `# FaultMesh Audit Report — ${mode.toUpperCase()}\n\n`;
+    md += `* **Timestamp:** ${new Date(timestamp).toUTCString()}\n`;
+    md += `* **Overall Score:** ${report.score} / 100 (Grade ${report.grade})\n`;
+    md += `* **Checks Passed:** ${report.passedChecks ?? report.passedAttacks} / ${report.totalChecks ?? report.totalAttacks}\n\n`;
+
+    md += `## Findings & Verification Summary\n\n`;
+    md += `| # | Check Name | Severity | Result | Finding Details |\n`;
+    md += `| :--- | :--- | :--- | :--- | :--- |\n`;
+    checks.forEach((c, idx) => {
+      const num = String(idx + 1).padStart(2, '0');
+      const sev = c.severity ? c.severity.toUpperCase() : 'STANDARD';
+      const res = c.passed ? 'PASSED' : 'FAILED';
+      const detail = (c.details || '').replace(/\|/g, '\\|');
+      md += `| ${num} | ${c.name} | ${sev} | ${res} | ${detail} |\n`;
+    });
+
+    if (report.recommendations && report.recommendations.length > 0) {
+      md += `\n## Remediation Recommendations\n\n`;
+      report.recommendations.forEach(rec => {
+        md += `* ${rec}\n`;
+      });
+    }
+
+    md += `\n---\n*Report generated by FaultMesh Runtime Engine*\n`;
+
+    downloadFile(`faultmesh-${mode}-audit-${Date.now()}.md`, 'text/markdown', md);
+  }
+
+  function exportJsonReport() {
+    if (!lastScorecardData || !lastScorecardData.report) {
+      alert('No audit report available to export. Run a benchmark first.');
+      return;
+    }
+    const jsonStr = JSON.stringify(lastScorecardData, null, 2);
+    downloadFile(`faultmesh-${lastScorecardData.mode}-audit-${Date.now()}.json`, 'application/json', jsonStr);
+  }
+
+  function downloadFile(filename, mimeType, content) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  if (btnExportMd) {
+    btnExportMd.addEventListener('click', exportMarkdownReport);
+  }
+  if (btnExportJson) {
+    btnExportJson.addEventListener('click', exportJsonReport);
   }
 
   // 9. Live Request SSE Stream
@@ -993,6 +1535,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   setDiagMode('resilience');
+  loadTargetUrl();
   refreshStatus();
   setupSSE();
 });

@@ -1,8 +1,32 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import http from 'node:http';
 import { ControlApi } from '../../src/engine/ControlApi.js';
 import { ToxicPipeline } from '../../src/engine/ToxicPipeline.js';
 import { TelemetryHub } from '../../src/engine/TelemetryHub.js';
 import { ResilienceScorer } from '../../src/scorer/ResilienceScorer.js';
+
+function rawHttpGet(port: number, path: string): Promise<{ status: number; data: any }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port,
+      path,
+      method: 'GET',
+    }, (res) => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        try {
+          resolve({ status: res.statusCode || 0, data: JSON.parse(body) });
+        } catch {
+          resolve({ status: res.statusCode || 0, data: body });
+        }
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
 
 describe('FaultMesh Control API (TDD)', () => {
   let api: ControlApi;
@@ -139,4 +163,65 @@ describe('FaultMesh Control API (TDD)', () => {
     expect(scorecard.score).toBe(100);
     expect(scorecard.grade).toBe('A');
   });
+
+  describe('Dynamic Target API Configuration', () => {
+    it('GET and POST /_faultmesh/config/target dynamically updates proxy backend', async () => {
+      let targetState = 'http://127.0.0.1:4000';
+      const mockProxy: any = {
+        getTargetUrl: () => targetState,
+        setTargetUrl: (url: string) => { targetState = url; },
+      };
+      api.setProxy(mockProxy);
+
+      // Initial GET
+      const getRes1 = await fetch(`http://127.0.0.1:${port}/_faultmesh/config/target`);
+      expect(getRes1.status).toBe(200);
+      const data1 = await getRes1.json();
+      expect(data1.targetUrl).toBe('http://127.0.0.1:4000');
+
+      // POST valid new target URL
+      const postRes = await fetch(`http://127.0.0.1:${port}/_faultmesh/config/target`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUrl: 'http://localhost:8080' }),
+      });
+      expect(postRes.status).toBe(200);
+      expect(targetState).toBe('http://localhost:8080');
+
+      // Verify GET returns new target
+      const getRes2 = await fetch(`http://127.0.0.1:${port}/_faultmesh/config/target`);
+      const data2 = await getRes2.json();
+      expect(data2.targetUrl).toBe('http://localhost:8080');
+
+      // Rejects invalid URL
+      const badRes = await fetch(`http://127.0.0.1:${port}/_faultmesh/config/target`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUrl: 'invalid-url' }),
+      });
+      expect(badRes.status).toBe(400);
+    });
+  });
+
+  describe('Path Traversal & Static Asset Confinement', () => {
+    it('serves index.html for root path', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/`);
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).toContain('FaultMesh');
+    });
+
+    it('blocks directory traversal attempts with 403 Forbidden', async () => {
+      // Direct raw socket escape
+      const res1 = await rawHttpGet(port, '/../../package.json');
+      expect(res1.status).toBe(403);
+      expect(res1.data.error).toContain('Path Traversal Prohibited');
+
+      // URL encoded escape
+      const res2 = await rawHttpGet(port, '/%2e%2e/%2e%2e/package.json');
+      expect(res2.status).toBe(403);
+      expect(res2.data.error).toContain('Path Traversal Prohibited');
+    });
+  });
 });
+

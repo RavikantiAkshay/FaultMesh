@@ -29,12 +29,23 @@ export class ToxicPipeline {
     this.rules.clear();
   }
 
+  private matchesPath(rule: ToxicRule, requestPath?: string): boolean {
+    if (!rule.pathPattern || !rule.pathPattern.trim()) {
+      return true;
+    }
+    if (!requestPath) {
+      return true;
+    }
+    return requestPath.includes(rule.pathPattern.trim());
+  }
+
   /**
-   * Check if any active StatusToxic exists for the specified direction
+   * Check if any active StatusToxic exists for the specified direction and request path
    */
-  getActiveStatusToxic(direction: ToxicStreamDirection): StatusToxic | null {
+  getActiveStatusToxic(direction: ToxicStreamDirection, requestPath?: string): StatusToxic | null {
     for (const rule of this.rules.values()) {
       if (rule.enabled && rule.type === 'status' && rule.direction === direction) {
+        if (!this.matchesPath(rule, requestPath)) continue;
         return new StatusToxic(rule.config as any);
       }
     }
@@ -42,14 +53,15 @@ export class ToxicPipeline {
   }
 
   /**
-   * Create an array of streaming transformers for the specified stream direction
+   * Create an array of streaming transformers for the specified stream direction and request path
    */
-  createStreamTransformers(direction: ToxicStreamDirection): { transformers: Transform[]; appliedNames: string[] } {
+  createStreamTransformers(direction: ToxicStreamDirection, requestPath?: string): { transformers: Transform[]; appliedNames: string[] } {
     const transformers: Transform[] = [];
     const appliedNames: string[] = [];
 
     for (const rule of this.rules.values()) {
       if (!rule.enabled || rule.direction !== direction) continue;
+      if (!this.matchesPath(rule, requestPath)) continue;
 
       switch (rule.type) {
         case 'latency':

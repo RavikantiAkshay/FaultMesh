@@ -46,6 +46,7 @@ export interface ToxicRule<T extends ToxicType = ToxicType> {
   direction: ToxicStreamDirection;
   enabled: boolean;
   config: ToxicConfigMap[T];
+  pathPattern?: string;
 }
 
 export interface ProxyConfig {

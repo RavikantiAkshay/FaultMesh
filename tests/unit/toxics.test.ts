@@ -6,6 +6,7 @@ import { CutToxic } from '../../src/toxics/CutToxic.js';
 import { CorruptToxic } from '../../src/toxics/CorruptToxic.js';
 import { StatusToxic } from '../../src/toxics/StatusToxic.js';
 import { TelemetryHub } from '../../src/engine/TelemetryHub.js';
+import { ToxicPipeline } from '../../src/engine/ToxicPipeline.js';
 
 async function streamToBuffer(stream: Readable): Promise<Buffer> {
   const chunks: Buffer[] = [];
@@ -181,4 +182,71 @@ describe('FaultMesh Toxic Stream Transformers (TDD)', () => {
       expect(hub.getRecentEvents().length).toBe(0);
     });
   });
+
+  describe('Route-Specific Toxic Filtering (pathPattern)', () => {
+    it('applies status toxic only when request path matches pathPattern', () => {
+      const pipeline = new ToxicPipeline();
+
+      pipeline.addRule({
+        id: 'checkout-500',
+        name: 'Checkout Failure',
+        type: 'status',
+        direction: 'downstream',
+        enabled: true,
+        pathPattern: '/api/checkout',
+        config: { statusCode: 503 },
+      });
+
+      // Matching paths
+      const match1 = pipeline.getActiveStatusToxic('downstream', '/api/checkout');
+      expect(match1).not.toBeNull();
+      expect(match1?.statusCode).toBe(503);
+
+      const match2 = pipeline.getActiveStatusToxic('downstream', '/api/checkout/pay?token=xyz');
+      expect(match2).not.toBeNull();
+
+      // Non-matching paths
+      const nonMatch = pipeline.getActiveStatusToxic('downstream', '/api/users/profile');
+      expect(nonMatch).toBeNull();
+    });
+
+    it('applies stream transformers only when request path matches pathPattern', () => {
+      const pipeline = new ToxicPipeline();
+
+      pipeline.addRule({
+        id: 'selective-latency',
+        name: 'Targeted Delay',
+        type: 'latency',
+        direction: 'downstream',
+        enabled: true,
+        pathPattern: '/heavy-query',
+        config: { latencyMs: 200 },
+      });
+
+      const matched = pipeline.createStreamTransformers('downstream', '/heavy-query?limit=100');
+      expect(matched.transformers.length).toBe(1);
+      expect(matched.appliedNames[0]).toContain('Targeted Delay');
+
+      const skipped = pipeline.createStreamTransformers('downstream', '/light-query');
+      expect(skipped.transformers.length).toBe(0);
+      expect(skipped.appliedNames.length).toBe(0);
+    });
+
+    it('applies everywhere when pathPattern is empty or omitted', () => {
+      const pipeline = new ToxicPipeline();
+
+      pipeline.addRule({
+        id: 'global-cut',
+        name: 'Global Sever',
+        type: 'cut',
+        direction: 'downstream',
+        enabled: true,
+        config: { cutAfterBytes: 10 },
+      });
+
+      const result = pipeline.createStreamTransformers('downstream', '/any-path-here');
+      expect(result.transformers.length).toBe(1);
+    });
+  });
 });
+

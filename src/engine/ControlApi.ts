@@ -7,6 +7,7 @@ import { TelemetryHub } from './TelemetryHub.js';
 import { ResilienceScorer } from '../scorer/ResilienceScorer.js';
 import { SecurityAuditor } from '../scorer/SecurityAuditor.js';
 import { TrafficStormAuditor } from '../scorer/TrafficStormAuditor.js';
+import { FaultMeshProxy } from './FaultMeshProxy.js';
 import { ToxicRule } from '../types.js';
 
 export class ControlApi {
@@ -18,6 +19,7 @@ export class ControlApi {
   private securityAuditor: SecurityAuditor;
   private trafficStormAuditor: TrafficStormAuditor;
   private dashboardDir: string;
+  private proxy?: FaultMeshProxy;
   private isRunning = false;
 
   constructor(
@@ -27,7 +29,8 @@ export class ControlApi {
     scorer: ResilienceScorer,
     securityAuditor?: SecurityAuditor,
     trafficStormAuditor?: TrafficStormAuditor,
-    dashboardDir?: string
+    dashboardDir?: string,
+    proxy?: FaultMeshProxy
   ) {
     this.port = port;
     this.pipeline = pipeline;
@@ -35,6 +38,7 @@ export class ControlApi {
     this.scorer = scorer;
     this.securityAuditor = securityAuditor || new SecurityAuditor('http://127.0.0.1:3001');
     this.trafficStormAuditor = trafficStormAuditor || new TrafficStormAuditor('http://127.0.0.1:3001');
+    this.proxy = proxy;
 
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
     let resolvedDir = dashboardDir || path.resolve(currentDir, '../dashboard');
@@ -50,6 +54,12 @@ export class ControlApi {
   }
 
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const rawUrl = req.url || '/';
+    if (rawUrl.includes('/..') || rawUrl.includes('..\\') || rawUrl.toLowerCase().includes('%2e%2e') || rawUrl.includes('\0')) {
+      this.json(res, 403, { error: 'Access Denied: Path Traversal Prohibited' });
+      return;
+    }
+
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
     const pathname = url.pathname;
 
@@ -208,6 +218,34 @@ export class ControlApi {
       return;
     }
 
+    // 8.5 Dynamic Target API Configuration
+    if (pathname === '/_faultmesh/config/target') {
+      if (req.method === 'GET') {
+        const currentTarget = this.proxy ? this.proxy.getTargetUrl() : 'http://127.0.0.1:4000';
+        this.json(res, 200, { targetUrl: currentTarget });
+        return;
+      }
+      if (req.method === 'POST') {
+        const raw = await this.readBody(req);
+        try {
+          const body = JSON.parse(raw);
+          if (!body.targetUrl || typeof body.targetUrl !== 'string') {
+            this.json(res, 400, { error: 'targetUrl is required and must be a string' });
+            return;
+          }
+          // Validate URL format
+          new URL(body.targetUrl);
+          if (this.proxy) {
+            this.proxy.setTargetUrl(body.targetUrl);
+          }
+          this.json(res, 200, { success: true, targetUrl: body.targetUrl });
+        } catch (err: any) {
+          this.json(res, 400, { error: 'Invalid target URL format', details: err.message });
+        }
+        return;
+      }
+    }
+
     // 9. Static Dashboard Serving
     if (req.method === 'GET') {
       this.serveStatic(pathname, res);
@@ -217,15 +255,40 @@ export class ControlApi {
     this.json(res, 404, { error: 'Route not found' });
   }
 
-  private serveStatic(pathname: string, res: ServerResponse): void {
-    const safePath = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
-    const filePath = path.join(this.dashboardDir, safePath);
+  setProxy(proxy: FaultMeshProxy): void {
+    this.proxy = proxy;
+  }
 
-    // Prevent directory traversal
-    if (!filePath.startsWith(this.dashboardDir)) {
-      this.json(res, 403, { error: 'Forbidden' });
+  private serveStatic(pathname: string, res: ServerResponse): void {
+    const normalizedDashboardDir = path.resolve(this.dashboardDir);
+
+    let decodedPath = '';
+    try {
+      decodedPath = decodeURIComponent(pathname);
+    } catch {
+      this.json(res, 400, { error: 'Invalid URL encoding' });
       return;
     }
+
+    // Explicit Traversal Guard: reject relative parent indicators or backslashes
+    if (decodedPath.includes('..') || decodedPath.includes('\\')) {
+      this.json(res, 403, { error: 'Access Denied: Path Traversal Prohibited' });
+      return;
+    }
+
+    const safePath = decodedPath === '/' ? 'index.html' : decodedPath.replace(/^\/+/, '');
+    const resolvedPath = path.resolve(normalizedDashboardDir, safePath);
+
+    // Strict Path Jailing: prevent directory traversal outside dashboardDir
+    const isWithinDashboard = resolvedPath.startsWith(normalizedDashboardDir + path.sep) ||
+      resolvedPath === path.join(normalizedDashboardDir, 'index.html');
+
+    if (!isWithinDashboard) {
+      this.json(res, 403, { error: 'Access Denied: Path Traversal Prohibited' });
+      return;
+    }
+
+    const filePath = resolvedPath;
 
     if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
       const ext = path.extname(filePath);
@@ -239,14 +302,17 @@ export class ControlApi {
       res.writeHead(200, { 'Content-Type': contentTypes[ext] || 'text/plain' });
       fs.createReadStream(filePath).pipe(res);
     } else {
-      // Fallback to index.html for SPA if exists
-      const indexPath = path.join(this.dashboardDir, 'index.html');
-      if (fs.existsSync(indexPath)) {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        fs.createReadStream(indexPath).pipe(res);
-      } else {
-        this.json(res, 404, { error: 'File not found' });
+      // Fallback to index.html for SPA only if requesting an extensionless path (e.g. client routes)
+      const ext = path.extname(filePath);
+      if (!ext) {
+        const indexPath = path.join(this.dashboardDir, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          fs.createReadStream(indexPath).pipe(res);
+          return;
+        }
       }
+      this.json(res, 404, { error: 'File not found' });
     }
   }
 

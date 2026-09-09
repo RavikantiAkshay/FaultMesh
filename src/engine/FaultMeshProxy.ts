@@ -39,8 +39,10 @@ export class FaultMeshProxy {
       return;
     }
 
+    const requestPath = req.url || '/';
+
     // 1. Check for immediate downstream Status override toxic
-    const statusToxic = this.toxicPipeline.getActiveStatusToxic('downstream');
+    const statusToxic = this.toxicPipeline.getActiveStatusToxic('downstream', requestPath);
     if (statusToxic) {
       appliedToxics.push(`Status (${statusToxic.statusCode})`);
       const body = statusToxic.responseBody || JSON.stringify({
@@ -84,7 +86,7 @@ export class FaultMeshProxy {
     const upstreamReq = http.request(options, async (upstreamRes) => {
       // 3. Prepare Downstream transformers
       const { transformers: downstreamTransformers, appliedNames } =
-        this.toxicPipeline.createStreamTransformers('downstream');
+        this.toxicPipeline.createStreamTransformers('downstream', requestPath);
       appliedToxics.push(...appliedNames);
 
       const headers = { ...upstreamRes.headers };
@@ -186,5 +188,13 @@ export class FaultMeshProxy {
 
   getPort(): number {
     return this.port;
+  }
+
+  setTargetUrl(url: string): void {
+    this.config.targetUrl = url;
+  }
+
+  getTargetUrl(): string {
+    return this.config.targetUrl;
   }
 }
