@@ -2,6 +2,7 @@ import http, { IncomingMessage, ServerResponse } from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execSync, spawn } from 'node:child_process';
 import { ToxicPipeline } from './ToxicPipeline.js';
 import { TelemetryHub } from './TelemetryHub.js';
 import { ResilienceScorer } from '../scorer/ResilienceScorer.js';
@@ -9,6 +10,7 @@ import { SecurityAuditor } from '../scorer/SecurityAuditor.js';
 import { TrafficStormAuditor } from '../scorer/TrafficStormAuditor.js';
 import { FaultMeshProxy } from './FaultMeshProxy.js';
 import { ToxicRule } from '../types.js';
+import { AutoHealer } from '../healer/AutoHealer.js';
 
 export class ControlApi {
   private server: http.Server;
@@ -238,12 +240,88 @@ export class ControlApi {
           if (this.proxy) {
             this.proxy.setTargetUrl(body.targetUrl);
           }
+          if (this.securityAuditor) {
+            this.securityAuditor.setTargetUrl(body.targetUrl);
+          }
+          if (this.trafficStormAuditor) {
+            this.trafficStormAuditor.setTargetUrl(body.targetUrl);
+          }
           this.json(res, 200, { success: true, targetUrl: body.targetUrl });
         } catch (err: any) {
           this.json(res, 400, { error: 'Invalid target URL format', details: err.message });
         }
         return;
       }
+    }
+
+    // 8.6 Auto-Healer Endpoints
+    if (pathname === '/_faultmesh/healer/scan' && req.method === 'POST') {
+      try {
+        const raw = await this.readBody(req);
+        const body = raw ? JSON.parse(raw) : {};
+        const projectDir = body.projectDir || '.';
+        const failedChecks = body.failedChecks || [];
+
+        const scanResult = await AutoHealer.scan({ projectDir, failedChecks });
+        this.json(res, 200, scanResult);
+      } catch (err: any) {
+        this.json(res, 500, { error: 'AutoHealer scan error', details: err.message });
+      }
+      return;
+    }
+
+    if (pathname === '/_faultmesh/healer/apply' && req.method === 'POST') {
+      try {
+        const raw = await this.readBody(req);
+        const body = raw ? JSON.parse(raw) : {};
+        const projectDir = body.projectDir || '.';
+        const patchIds = body.patchIds;
+        const createBackup = body.createBackup !== false;
+
+        const applyResult = await AutoHealer.apply({ projectDir, patchIds, createBackup });
+
+        // If healing the sample backend, automatically restart it so memory updates immediately
+        if (applyResult.success && projectDir.includes('vulnerable-backend')) {
+          await this.restartSampleBackend();
+        }
+
+        this.json(res, 200, applyResult);
+      } catch (err: any) {
+        this.json(res, 500, { error: 'AutoHealer apply error', details: err.message });
+      }
+      return;
+    }
+
+    if (pathname === '/_faultmesh/healer/rollback' && req.method === 'POST') {
+      try {
+        const raw = await this.readBody(req);
+        const body = raw ? JSON.parse(raw) : {};
+        if (!body.backupDir) {
+          this.json(res, 400, { error: 'backupDir is required for rollback' });
+          return;
+        }
+        const projectDir = body.projectDir || '.';
+        const rollbackResult = await AutoHealer.rollback({ projectDir, backupDir: body.backupDir });
+
+        if (rollbackResult.success && projectDir.includes('vulnerable-backend')) {
+          await this.restartSampleBackend();
+        }
+
+        this.json(res, 200, rollbackResult);
+      } catch (err: any) {
+        this.json(res, 500, { error: 'AutoHealer rollback error', details: err.message });
+      }
+      return;
+    }
+
+    if (pathname === '/_faultmesh/sample/restart' && req.method === 'POST') {
+      try {
+        await this.restartSampleBackend();
+        this.json(res, 200, { success: true, message: 'Sample backend restarted on port 5050' });
+      } catch (err: any) {
+        this.json(res, 500, { error: 'Failed to restart sample backend', details: err.message });
+      }
+      return;
     }
 
     // 9. Static Dashboard Serving
@@ -330,6 +408,67 @@ export class ControlApi {
     res.end(JSON.stringify(data));
   }
 
+  private sampleProcess?: import('node:child_process').ChildProcess;
+
+  private async restartSampleBackend(): Promise<void> {
+    if (this.sampleProcess) {
+      try {
+        this.sampleProcess.kill();
+      } catch {}
+      this.sampleProcess = undefined;
+    }
+
+    this.killPort(5050);
+    await new Promise((r) => setTimeout(r, 400));
+
+    const sampleScript = path.resolve(process.cwd(), 'examples/vulnerable-backend/server.js');
+    if (!fs.existsSync(sampleScript)) {
+      return;
+    }
+
+    const child = spawn(process.execPath, [sampleScript], {
+      cwd: path.dirname(sampleScript),
+      stdio: 'ignore',
+      detached: false,
+    });
+    this.sampleProcess = child;
+
+    const deadline = Date.now() + 6000;
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch('http://127.0.0.1:5050/api/health', {
+          signal: AbortSignal.timeout(500),
+        });
+        if (res.ok) {
+          return;
+        }
+      } catch {}
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
+  private killPort(port: number): void {
+    try {
+      if (process.platform === 'win32') {
+        const output = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8' }).trim();
+        if (output) {
+          const lines = output.split('\n');
+          for (const line of lines) {
+            const parts = line.trim().split(/\s+/);
+            const pid = parts[parts.length - 1];
+            if (pid && pid !== '0' && pid !== String(process.pid)) {
+              try {
+                execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+              } catch {}
+            }
+          }
+        }
+      } else {
+        execSync(`fuser -k ${port}/tcp 2>/dev/null || true`, { stdio: 'ignore' });
+      }
+    } catch {}
+  }
+
   start(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.server.listen(this.port, () => {
@@ -345,6 +484,13 @@ export class ControlApi {
   }
 
   stop(): Promise<void> {
+    if (this.sampleProcess) {
+      try {
+        this.sampleProcess.kill();
+      } catch {}
+      this.sampleProcess = undefined;
+    }
+    this.killPort(5050);
     return new Promise((resolve) => {
       if (!this.isRunning) return resolve();
       this.server.close(() => {

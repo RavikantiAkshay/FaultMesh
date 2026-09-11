@@ -17,6 +17,38 @@ export class ResilienceScorer {
     // Ensure clean pipeline initially
     this.pipeline.clearRules();
 
+    // Pre-flight check: verify upstream target is reachable through the proxy
+    let upstreamReachable = true;
+    let preflightError = '';
+    try {
+      const probe = await fetch(`${this.proxyUrl}/api/health`, { signal: AbortSignal.timeout(2500) });
+      if (probe.status === 502) {
+        upstreamReachable = false;
+        preflightError = 'Upstream target API returned HTTP 502 Bad Gateway. The configured target server is unreachable or offline.';
+      }
+    } catch (err: any) {
+      upstreamReachable = false;
+      preflightError = `Target connection failed (${err.message}). Ensure target server is online.`;
+    }
+
+    if (!upstreamReachable) {
+      return {
+        score: 0,
+        grade: 'F',
+        timestamp: Date.now(),
+        totalAttacks: 5,
+        passedAttacks: 0,
+        results: [
+          { name: 'Response Delay Handling (300ms)', description: 'Checks delay handling.', toxicUsed: 'latency', passed: false, latencyMs: 0, details: preflightError },
+          { name: 'Slow Connection Throughput (16 kbps)', description: 'Checks low bandwidth.', toxicUsed: 'bandwidth', passed: false, latencyMs: 0, details: preflightError },
+          { name: 'Abrupt Disconnection Mid-Transfer', description: 'Checks disconnection.', toxicUsed: 'cut', passed: false, latencyMs: 0, details: preflightError },
+          { name: 'Malformed JSON Handling', description: 'Checks data corruption.', toxicUsed: 'corrupt', passed: false, latencyMs: 0, details: preflightError },
+          { name: 'HTTP 503 Service Unavailable Handling', description: 'Checks 503 outage.', toxicUsed: 'status', passed: false, latencyMs: 0, details: preflightError },
+        ],
+        recommendations: ['Target server is unreachable. Check the Target API field in the header and verify your backend server is running.'],
+      };
+    }
+
     // 1. Test 1: Latency Spike
     const r1 = await this.testLatencySpike(profile);
     results.push(r1);

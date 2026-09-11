@@ -68,6 +68,7 @@
 
         <div class="diagnostics-actions">
           <div class="export-btn-group" id="exportGroup" style="display: none;">
+            <button id="btnOpenHealer" class="btn-secondary btn-healer-trigger" type="button" title="Scan and automatically heal backend source code">Auto-Heal Codebase</button>
             <button id="btnExportMd" class="btn-secondary btn-export" type="button" title="Download formatted Markdown scorecard">Export Markdown</button>
             <button id="btnExportJson" class="btn-secondary btn-export" type="button" title="Download raw JSON scorecard">Export JSON</button>
           </div>
@@ -299,6 +300,48 @@
     </section>
 
   </main>
+
+  <!-- Auto-Healer Modal Dialog -->
+  <div id="healerModal" class="modal-backdrop" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-badge">AGENTIC AUTO-HEALER</span>
+          <h3>Automated Code Remediation</h3>
+        </div>
+        <button id="btnCloseHealer" class="btn-text btn-modal-close" type="button" title="Close modal">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="modal-intro">
+          The Auto-Healer scans your backend project, detects missing resilience &amp; security protections, and generates reviewable Git patches with zero unwanted disk modifications.
+        </p>
+
+        <div class="healer-config-row">
+          <label for="healerProjectDir">Backend Project Directory:</label>
+          <div class="healer-input-group">
+            <input type="text" id="healerProjectDir" class="form-input" value="./examples/vulnerable-backend" placeholder="e.g. ./ or ./src" spellcheck="false">
+            <button id="btnHealerScan" class="btn-primary" type="button">Scan Codebase</button>
+          </div>
+        </div>
+
+        <div id="healerScanStatus" class="healer-status-bar" style="display: none;"></div>
+
+        <div id="healerDiffContainer" class="healer-diff-wrapper" style="display: none;"></div>
+
+        <div id="healerActionsBar" class="healer-actions-bar" style="display: none;">
+          <label class="backup-checkbox-label">
+            <input type="checkbox" id="healerBackupCheck" checked>
+            Create automatic backup in <code>.faultmesh-backup/</code>
+          </label>
+          <div class="healer-btn-group">
+            <button id="btnHealerApply" class="btn-primary" type="button">Apply Remedies to Codebase</button>
+            <button id="btnHealerRollback" class="btn-secondary" type="button" style="display: none;">Rollback Last Patch</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

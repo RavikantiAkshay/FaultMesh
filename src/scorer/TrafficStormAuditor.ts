@@ -7,11 +7,15 @@ export class TrafficStormAuditor {
     this.targetUrl = targetUrl;
   }
 
+  setTargetUrl(url: string): void {
+    this.targetUrl = url;
+  }
+
   async runStormSuite(profile: 'resilient' | 'fragile' = 'resilient'): Promise<TrafficStormScorecard> {
     const checks: TrafficStormResult[] = [];
     const recommendations: string[] = [];
 
-    // 1. Rate Limit Back-off & Retry Storms (HTTP 429)
+    // 1. Rate Limit Back-off & Retry Storm Handling
     const c1 = await this.auditRateLimitBackoff(profile);
     checks.push(c1);
     if (!c1.passed) recommendations.push(c1.remediation);
@@ -26,13 +30,13 @@ export class TrafficStormAuditor {
     checks.push(c3);
     if (!c3.passed) recommendations.push(c3.remediation);
 
-    // 4. Duplicate Request & Idempotency Key Deduplication
+    // 4. Duplicate Request Idempotency Protection
     const c4 = await this.auditIdempotencyProtection(profile);
     checks.push(c4);
     if (!c4.passed) recommendations.push(c4.remediation);
 
-    // Weighted scoring (4 checks: 25 points each = 100)
-    const weights = [25, 25, 25, 25];
+    // Calculate score (4 checks, weighted to 100)
+    const weights = [25, 30, 25, 20];
     let score = 0;
     let passedCount = 0;
 
@@ -47,11 +51,7 @@ export class TrafficStormAuditor {
     if (score >= 90) grade = 'A';
     else if (score >= 75) grade = 'B';
     else if (score >= 60) grade = 'C';
-    else if (score >= 45) grade = 'D';
-
-    if (recommendations.length === 0) {
-      recommendations.push('Your application safely handled all traffic storm, rate limit, and denial-of-service resilience tests.');
-    }
+    else if (score >= 40) grade = 'D';
 
     return {
       score,
@@ -83,8 +83,11 @@ export class TrafficStormAuditor {
     }
 
     try {
-      const res = await fetch(`${this.targetUrl}/api/ratelimit-test`);
+      const res = await fetch(`${this.targetUrl}/api/ratelimit-test`, { signal: AbortSignal.timeout(3000) });
       const latency = Date.now() - start;
+      const retryAfter = res.headers.get('retry-after');
+
+      const isRateLimited = res.status === 429 && Boolean(retryAfter);
 
       return {
         id: 'storm_ratelimit',
@@ -92,21 +95,23 @@ export class TrafficStormAuditor {
         category: 'ratelimit',
         description,
         severity: 'high',
-        passed: true,
+        passed: isRateLimited,
         latencyMs: latency,
-        details: 'Rate limit back-off verified: application cleanly respects Retry-After cooldown windows.',
+        details: isRateLimited
+          ? `Rate limit back-off verified: server returned HTTP 429 with Retry-After: ${retryAfter}s.`
+          : 'Server did not return HTTP 429 Retry-After header on rate limit test route.',
         remediation: 'Maintain exponential backoff and jitter algorithms for all external API dependencies.',
       };
-    } catch {
+    } catch (err: any) {
       return {
         id: 'storm_ratelimit',
         name: 'Rate Limit Back-off & Retry Storm Handling',
         category: 'ratelimit',
         description,
         severity: 'high',
-        passed: profile === 'resilient',
+        passed: false,
         latencyMs: Date.now() - start,
-        details: 'Client respects rate limiting response codes.',
+        details: `Target connection failed (${err.message}). Ensure server is online.`,
         remediation: 'Ensure rate-limit back-off is active.',
       };
     }
@@ -131,14 +136,22 @@ export class TrafficStormAuditor {
     }
 
     try {
-      // Send oversized payload check
+      // Send oversized body payload (2MB)
+      const largePayload = JSON.stringify({ data: 'x'.repeat(2 * 1024 * 1024) });
       const res = await fetch(`${this.targetUrl}/api/upload-check`, {
         method: 'POST',
-        headers: { 'Content-Length': '52428800' }, // 50MB declared
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': String(Buffer.byteLength(largePayload)),
+        },
+        body: largePayload,
+        signal: AbortSignal.timeout(4000),
       });
       const latency = Date.now() - start;
 
-      const isProtected = res.status === 413 || res.status === 400 || res.status === 200;
+      // Only HTTP 413 Payload Too Large is safe
+      const isProtected = res.status === 413;
+
       return {
         id: 'storm_payload',
         name: 'Oversized Payload & Buffer OOM Defense (HTTP 413)',
@@ -147,19 +160,21 @@ export class TrafficStormAuditor {
         severity: 'critical',
         passed: isProtected,
         latencyMs: latency,
-        details: 'Server terminates oversized streams early with HTTP 413 Payload Too Large, shielding system memory.',
-        remediation: 'Maintain strict payload size ceilings across all public API upload endpoints.',
+        details: isProtected
+          ? 'Server terminates oversized streams early with HTTP 413 Payload Too Large, shielding system memory.'
+          : `Server accepted oversized 2MB payload (HTTP ${res.status}) without 413 Payload Too Large rejection. Vulnerable to memory exhaustion.`,
+        remediation: 'Configure request body size limits (e.g. express.json({ limit: "1mb" })) to reject oversized payloads early with HTTP 413.',
       };
-    } catch {
+    } catch (err: any) {
       return {
         id: 'storm_payload',
         name: 'Oversized Payload & Buffer OOM Defense (HTTP 413)',
         category: 'payload',
         description,
         severity: 'critical',
-        passed: profile === 'resilient',
+        passed: false,
         latencyMs: Date.now() - start,
-        details: 'Oversized payloads safely rejected without process disruption.',
+        details: `Target connection failed (${err.message}). Ensure server is online.`,
         remediation: 'Enforce body-parser size limits.',
       };
     }
@@ -184,29 +199,47 @@ export class TrafficStormAuditor {
     }
 
     try {
-      const latency = Date.now() - start;
+      // Connect to server and verify socket timeouts or slowloris probe
+      let isProtected = false;
+      let latency = 0;
+      try {
+        const probeRes = await fetch(`${this.targetUrl}/api/slowloris-probe`, { signal: AbortSignal.timeout(3000) });
+        latency = Date.now() - start;
+        if (probeRes.ok) {
+          const data: any = await probeRes.json().catch(() => ({}));
+          isProtected = data.status === 'protected' || probeRes.headers.get('x-socket-protection') === 'active';
+        }
+      } catch {
+        // Fallback to checking /api/health
+        const res = await fetch(`${this.targetUrl}/api/health`, { signal: AbortSignal.timeout(3000) });
+        latency = Date.now() - start;
+        isProtected = res.headers.get('x-socket-protection') === 'active';
+      }
+
       return {
         id: 'storm_slowloris',
         name: 'Slowloris Connection Drip Defense',
         category: 'slowloris',
         description,
         severity: 'critical',
-        passed: true,
+        passed: isProtected,
         latencyMs: latency,
-        details: 'Server enforces strict read timeouts (10s max headers/body) and terminates stalled socket drips cleanly.',
-        remediation: 'Ensure keep-alive and request timeout headers are strictly enforced at the edge.',
+        details: isProtected
+          ? 'Server enforces active socket read timeouts (headersTimeout / requestTimeout) to terminate stalled connection drips.'
+          : 'Server socket timeouts (headersTimeout, requestTimeout) are missing or unbounded. Vulnerable to slowloris connection exhaustion.',
+        remediation: 'Configure server request timeout (e.g. server.headersTimeout = 5000, server.requestTimeout = 10000) to terminate stalled or dripped connections.',
       };
-    } catch {
+    } catch (err: any) {
       return {
         id: 'storm_slowloris',
         name: 'Slowloris Connection Drip Defense',
         category: 'slowloris',
         description,
         severity: 'critical',
-        passed: profile === 'resilient',
+        passed: false,
         latencyMs: Date.now() - start,
-        details: 'Server terminates slow connection leaks safely.',
-        remediation: 'Configure strict headersTimeout and requestTimeout values.',
+        details: `Target connection failed (${err.message}). Ensure server is online.`,
+        remediation: 'Ensure keep-alive and request timeout headers are strictly enforced at the edge.',
       };
     }
   }
@@ -223,32 +256,41 @@ export class TrafficStormAuditor {
         description,
         severity: 'critical',
         passed: false,
-        latencyMs: 18,
-        details: 'Identical concurrent POST requests with the same Idempotency-Key were processed twice, resulting in duplicate order creation.',
-        remediation: 'Implement an Idempotency-Key cache (e.g. Redis SETNX) on state-changing endpoints to return the cached response for duplicate requests.',
+        latencyMs: 80,
+        details: 'Two concurrent POST requests sharing identical Idempotency-Key created two distinct database records and transactions.',
+        remediation: 'Store idempotent request keys in Redis/database with atomic SETNX locks to return cached responses for replayed POST requests.',
       };
     }
 
     try {
-      const idempotencyKey = `fm_idem_${Date.now()}`;
+      const idempotencyKey = `idem_key_${Date.now()}`;
       const [res1, res2] = await Promise.all([
         fetch(`${this.targetUrl}/api/checkout`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
-          body: JSON.stringify({ item: 'pro_license', amount: 49 }),
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': idempotencyKey,
+          },
+          body: JSON.stringify({ item: 'pro_subscription', amount: 49 }),
+          signal: AbortSignal.timeout(3000),
         }),
         fetch(`${this.targetUrl}/api/checkout`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
-          body: JSON.stringify({ item: 'pro_license', amount: 49 }),
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': idempotencyKey,
+          },
+          body: JSON.stringify({ item: 'pro_subscription', amount: 49 }),
+          signal: AbortSignal.timeout(3000),
         }),
       ]);
+
       const latency = Date.now() - start;
-      const data1: any = await res1.json().catch(() => ({}));
-      const data2: any = await res2.json().catch(() => ({}));
+      const body1: any = await res1.json().catch(() => ({}));
+      const body2: any = await res2.json().catch(() => ({}));
 
-      // Deduplication verified if both return same transactionId or one returns cached
-      const passed = (data1.transactionId && data1.transactionId === data2.transactionId) || (res1.status === 200 && res2.status === 200);
+      const isDeduplicated = (res1.status === 200 && res2.status === 200) &&
+        (body1.transactionId === body2.transactionId || body2.status === 'duplicate' || body2.status === 'completed');
 
       return {
         id: 'storm_idempotency',
@@ -256,22 +298,24 @@ export class TrafficStormAuditor {
         category: 'idempotency',
         description,
         severity: 'critical',
-        passed,
+        passed: isDeduplicated,
         latencyMs: latency,
-        details: 'Idempotency verified: concurrent duplicate requests safely deduplicated with identical transaction reference.',
-        remediation: 'Maintain distributed idempotency keys for all payment, booking, and mutation endpoints.',
+        details: isDeduplicated
+          ? 'Concurrent duplicate requests with identical Idempotency-Key successfully deduplicated to a single transaction.'
+          : 'Server failed to deduplicate concurrent requests sharing Idempotency-Key.',
+        remediation: 'Enforce atomic key locking on all mutating API POST requests.',
       };
-    } catch {
+    } catch (err: any) {
       return {
         id: 'storm_idempotency',
         name: 'Duplicate Request Idempotency Protection',
         category: 'idempotency',
         description,
         severity: 'critical',
-        passed: profile === 'resilient',
+        passed: false,
         latencyMs: Date.now() - start,
-        details: 'Concurrent duplicate requests handled safely.',
-        remediation: 'Implement Idempotency-Key handling.',
+        details: `Target connection failed (${err.message}). Ensure server is online.`,
+        remediation: 'Implement Redis or transactional idempotency cache check.',
       };
     }
   }

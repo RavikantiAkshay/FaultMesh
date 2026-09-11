@@ -4,6 +4,9 @@ import { ControlApi } from '../../src/engine/ControlApi.js';
 import { ToxicPipeline } from '../../src/engine/ToxicPipeline.js';
 import { TelemetryHub } from '../../src/engine/TelemetryHub.js';
 import { ResilienceScorer } from '../../src/scorer/ResilienceScorer.js';
+import { SecurityAuditor } from '../../src/scorer/SecurityAuditor.js';
+import { TrafficStormAuditor } from '../../src/scorer/TrafficStormAuditor.js';
+import { createMockUpstreamServer } from '../../src/server.js';
 
 function rawHttpGet(port: number, path: string): Promise<{ status: number; data: any }> {
   return new Promise((resolve, reject) => {
@@ -34,18 +37,32 @@ describe('FaultMesh Control API (TDD)', () => {
   let pipeline: ToxicPipeline;
   let hub: TelemetryHub;
   let scorer: ResilienceScorer;
+  let mockServer: http.Server;
+  let mockPort: number;
 
   beforeAll(async () => {
+    mockServer = createMockUpstreamServer(0);
+    await new Promise<void>((resolve) => {
+      mockServer.listen(0, () => {
+        mockPort = (mockServer.address() as any).port;
+        resolve();
+      });
+    });
+
     pipeline = new ToxicPipeline();
     hub = new TelemetryHub();
-    scorer = new ResilienceScorer('http://127.0.0.1:9999', pipeline);
-    api = new ControlApi(0, pipeline, hub, scorer);
+    scorer = new ResilienceScorer(`http://127.0.0.1:${mockPort}`, pipeline);
+    const securityAuditor = new SecurityAuditor(`http://127.0.0.1:${mockPort}`);
+    const trafficStormAuditor = new TrafficStormAuditor(`http://127.0.0.1:${mockPort}`);
+
+    api = new ControlApi(0, pipeline, hub, scorer, securityAuditor, trafficStormAuditor);
     await api.start();
     port = api.getPort();
   });
 
   afterAll(async () => {
     await api.stop();
+    await new Promise<void>((resolve) => mockServer.close(() => resolve()));
   });
 
   it('GET /_faultmesh/status returns online state and metrics', async () => {
@@ -223,5 +240,20 @@ describe('FaultMesh Control API (TDD)', () => {
       expect(res2.data.error).toContain('Path Traversal Prohibited');
     });
   });
+
+  describe('AutoHealer API Endpoints', () => {
+    it('POST /_faultmesh/healer/scan returns scan result for target directory', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/_faultmesh/healer/scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectDir: '.' }),
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.projectRoot).toBeDefined();
+    });
+  });
 });
+
 

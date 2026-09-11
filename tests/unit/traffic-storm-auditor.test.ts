@@ -33,6 +33,13 @@ describe('TrafficStormAuditor — DoS, Rate Limit & Idempotency Testing Suite', 
         return;
       }
 
+      if (url.pathname === '/api/slowloris-probe') {
+        res.setHeader('X-Socket-Protection', 'active');
+        res.writeHead(200);
+        res.end(JSON.stringify({ status: 'protected' }));
+        return;
+      }
+
       res.writeHead(200);
       res.end(JSON.stringify({ status: 'ok' }));
     });

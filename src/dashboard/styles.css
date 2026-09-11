@@ -1274,3 +1274,238 @@ button {
   overflow-x: auto;
   white-space: pre;
 }
+
+/* ==========================================================================
+   AUTO-HEALER MODAL & UNIFIED DIFF VIEWER
+   ========================================================================== */
+
+.btn-healer-trigger {
+  border-color: var(--tag-green-fg) !important;
+  color: var(--tag-green-fg) !important;
+  font-weight: 600;
+}
+
+.btn-healer-trigger:hover {
+  background: var(--tag-green-bg) !important;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(3px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.modal-dialog {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 820px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-subtle);
+}
+
+.modal-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  background: var(--tag-green-bg);
+  color: var(--tag-green-fg);
+  border-radius: 4px;
+}
+
+.modal-header h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.btn-modal-close {
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.btn-modal-close:hover {
+  color: var(--text-main);
+}
+
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-intro {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.healer-config-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.healer-config-row label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.healer-input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.healer-input-group input {
+  flex: 1;
+}
+
+.healer-status-bar {
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+}
+
+.healer-diff-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 440px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.diff-card {
+  flex-shrink: 0;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-card);
+}
+
+.diff-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border-default);
+  font-size: 12px;
+}
+
+.diff-card-title {
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.diff-card-file {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.diff-pre {
+  margin: 0;
+  padding: 8px 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  background: var(--bg-subtle);
+  color: var(--text-main);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.diff-line {
+  display: block;
+  padding: 1px 12px;
+  min-height: 18px;
+}
+
+.diff-line.add {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.diff-line.del {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.diff-line.info {
+  color: #3b82f6;
+  font-weight: 600;
+  background: rgba(59, 130, 246, 0.08);
+  border-top: 1px solid rgba(59, 130, 246, 0.15);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.15);
+}
+
+.diff-line.file-header {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.diff-line.context {
+  color: var(--text-muted);
+}
+
+.healer-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-default);
+}
+
+.backup-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.healer-btn-group {
+  display: flex;
+  gap: 8px;
+}
+

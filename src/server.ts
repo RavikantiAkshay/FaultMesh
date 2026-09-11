@@ -108,13 +108,20 @@ export function createMockUpstreamServer(port: number): http.Server {
 
     if (url.pathname === '/api/upload-check') {
       const len = Number(req.headers['content-length'] || 0);
-      if (len > 10 * 1024 * 1024) {
+      if (len > 1 * 1024 * 1024) {
         res.writeHead(413);
-        res.end(JSON.stringify({ error: 'Payload Too Large', limitBytes: 5242880 }));
+        res.end(JSON.stringify({ error: 'Payload Too Large', limitBytes: 1048576 }));
         return;
       }
       res.writeHead(200);
       res.end(JSON.stringify({ status: 'accepted' }));
+      return;
+    }
+
+    if (url.pathname === '/api/slowloris-probe') {
+      res.setHeader('X-Socket-Protection', 'active');
+      res.writeHead(200);
+      res.end(JSON.stringify({ status: 'protected' }));
       return;
     }
 
@@ -169,8 +176,8 @@ export async function startFaultMesh(options: FaultMeshOptions = {}): Promise<Fa
 
   // 3. Initialize Resilience Scorer, Security Auditor, Traffic Storm Auditor & Control API / Dashboard
   const scorer = new ResilienceScorer(`http://127.0.0.1:${proxyPort}`, pipeline);
-  const securityAuditor = new SecurityAuditor(`http://127.0.0.1:${proxyPort}`);
-  const trafficStormAuditor = new TrafficStormAuditor(`http://127.0.0.1:${proxyPort}`);
+  const securityAuditor = new SecurityAuditor(targetUrl);
+  const trafficStormAuditor = new TrafficStormAuditor(targetUrl);
   const controlApi = new ControlApi(dashboardPort, pipeline, telemetryHub, scorer, securityAuditor, trafficStormAuditor, undefined, proxy);
 
   await controlApi.start();

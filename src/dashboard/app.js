@@ -53,8 +53,24 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnExportJson = document.getElementById('btnExportJson');
   const rulePathPattern = document.getElementById('rulePathPattern');
 
+  // Auto-Healer Modal Elements
+  const btnOpenHealer = document.getElementById('btnOpenHealer');
+  const healerModal = document.getElementById('healerModal');
+  const btnCloseHealer = document.getElementById('btnCloseHealer');
+  const healerProjectDir = document.getElementById('healerProjectDir');
+  const btnHealerScan = document.getElementById('btnHealerScan');
+  const healerScanStatus = document.getElementById('healerScanStatus');
+  const healerDiffContainer = document.getElementById('healerDiffContainer');
+  const healerActionsBar = document.getElementById('healerActionsBar');
+  const healerBackupCheck = document.getElementById('healerBackupCheck');
+  const btnHealerApply = document.getElementById('btnHealerApply');
+  const btnHealerRollback = document.getElementById('btnHealerRollback');
+
   const activityFeed = document.getElementById('activityFeed');
   const btnClearLog = document.getElementById('btnClearLog');
+
+  let lastHealerScanResult = null;
+  let lastBackupDir = null;
 
   let activeRules = [];
   let isRunningDiagnostics = false;
@@ -88,7 +104,29 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  async function syncTargetUrl() {
+    if (!targetUrlInput) return;
+    const targetUrl = targetUrlInput.value.trim();
+    if (!targetUrl) return;
+    try {
+      await fetch('/_faultmesh/config/target', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUrl }),
+      });
+    } catch (err) {
+      console.warn('Failed to auto-sync target URL:', err);
+    }
+  }
+
   if (btnSetTargetUrl && targetUrlInput) {
+    targetUrlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        btnSetTargetUrl.click();
+      }
+    });
+
     btnSetTargetUrl.addEventListener('click', async () => {
       const targetUrl = targetUrlInput.value.trim();
       if (!targetUrl) return;
@@ -737,6 +775,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnRunDiagnostics) {
     btnRunDiagnostics.addEventListener('click', async () => {
       if (isRunningDiagnostics) return;
+      await syncTargetUrl();
       isRunningDiagnostics = true;
       btnRunDiagnostics.disabled = true;
 
@@ -1467,6 +1506,222 @@ async def checkout(idempotency_key: str = Header(None)):
   }
   if (btnExportJson) {
     btnExportJson.addEventListener('click', exportJsonReport);
+  }
+
+  // 8.9 Auto-Healer Interactions
+  if (btnOpenHealer && healerModal) {
+    btnOpenHealer.addEventListener('click', () => {
+      healerModal.style.display = 'flex';
+      if (healerScanStatus && healerScanStatus.style.display === 'none') {
+        healerScanStatus.style.display = 'block';
+        healerScanStatus.textContent = 'Enter your backend project directory above and click "Scan Codebase".';
+      }
+    });
+  }
+
+  if (btnCloseHealer && healerModal) {
+    btnCloseHealer.addEventListener('click', () => {
+      healerModal.style.display = 'none';
+    });
+  }
+
+  // Close modal on backdrop click
+  if (healerModal) {
+    healerModal.addEventListener('click', (e) => {
+      if (e.target === healerModal) {
+        healerModal.style.display = 'none';
+      }
+    });
+  }
+
+  if (btnHealerScan) {
+    btnHealerScan.addEventListener('click', async () => {
+      const projectDir = (healerProjectDir ? healerProjectDir.value.trim() : '') || '.';
+      btnHealerScan.disabled = true;
+      btnHealerScan.textContent = 'Scanning...';
+      if (healerScanStatus) {
+        healerScanStatus.style.display = 'block';
+        healerScanStatus.textContent = `Scanning project at "${projectDir}"...`;
+      }
+      if (healerDiffContainer) healerDiffContainer.style.display = 'none';
+      if (healerActionsBar) healerActionsBar.style.display = 'none';
+
+      let failedChecks = [];
+      if (lastScorecardData && lastScorecardData.report) {
+        const checks = lastScorecardData.report.checks || lastScorecardData.report.results || [];
+        failedChecks = checks.filter(c => !c.passed).map(c => c.name);
+      }
+
+      try {
+        const res = await fetch('/_faultmesh/healer/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectDir, failedChecks }),
+        });
+        const result = await res.json();
+        lastHealerScanResult = result;
+
+        if (!result.success) {
+          if (healerScanStatus) {
+            healerScanStatus.textContent = `Scan Notice: ${result.warnings.join('; ') || 'Could not locate server entry file'}`;
+            healerScanStatus.style.borderColor = 'var(--tag-red-fg)';
+          }
+          return;
+        }
+
+        if (result.patches.length === 0) {
+          if (healerScanStatus) {
+            healerScanStatus.textContent = `Framework: ${result.framework.toUpperCase()} (Entry: ${result.entryFile}). All target defenses are already in place! Zero patches required.`;
+            healerScanStatus.style.borderColor = 'var(--tag-green-fg)';
+          }
+          return;
+        }
+
+        if (healerScanStatus) {
+          healerScanStatus.textContent = `Detected ${result.framework.toUpperCase()} in "${result.entryFile}". Found ${result.patches.length} applicable resilience & security remediations:`;
+          healerScanStatus.style.borderColor = 'var(--border-default)';
+        }
+
+        if (healerDiffContainer) {
+          healerDiffContainer.innerHTML = result.patches.map((p) => {
+            const diffLines = p.diff.split(/\r?\n/).map(line => {
+              if (line.startsWith('+') && !line.startsWith('+++')) {
+                return `<span class="diff-line add">${escapeHtml(line)}</span>`;
+              } else if (line.startsWith('-') && !line.startsWith('---')) {
+                return `<span class="diff-line del">${escapeHtml(line)}</span>`;
+              } else if (line.startsWith('@@')) {
+                return `<span class="diff-line info">${escapeHtml(line)}</span>`;
+              } else if (line.startsWith('---') || line.startsWith('+++')) {
+                return `<span class="diff-line file-header">${escapeHtml(line)}</span>`;
+              }
+              return `<span class="diff-line context">${escapeHtml(line)}</span>`;
+            }).join('');
+
+            return `
+              <div class="diff-card">
+                <div class="diff-card-header">
+                  <span class="diff-card-title">${escapeHtml(p.checkName)}</span>
+                  <span class="diff-card-file">${escapeHtml(p.relativePath)}</span>
+                </div>
+                <pre class="diff-pre"><code>${diffLines}</code></pre>
+              </div>
+            `;
+          }).join('');
+
+          healerDiffContainer.style.display = 'flex';
+        }
+
+        if (healerActionsBar) {
+          healerActionsBar.style.display = 'flex';
+        }
+      } catch (err) {
+        if (healerScanStatus) {
+          healerScanStatus.textContent = `Scan Error: ${err.message}`;
+          healerScanStatus.style.borderColor = 'var(--tag-red-fg)';
+        }
+      } finally {
+        btnHealerScan.disabled = false;
+        btnHealerScan.textContent = 'Scan Codebase';
+      }
+    });
+  }
+
+  if (btnHealerApply) {
+    btnHealerApply.addEventListener('click', async () => {
+      if (!lastHealerScanResult || !lastHealerScanResult.patches) return;
+      const projectDir = (healerProjectDir ? healerProjectDir.value.trim() : '') || '.';
+      const createBackup = healerBackupCheck ? healerBackupCheck.checked : true;
+
+      btnHealerApply.disabled = true;
+      btnHealerApply.textContent = 'Applying Remedies...';
+
+      try {
+        const res = await fetch('/_faultmesh/healer/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectDir, createBackup }),
+        });
+        const result = await res.json();
+
+        if (result.success) {
+          lastBackupDir = result.backupDir;
+          if (healerScanStatus) {
+            healerScanStatus.textContent = `Successfully applied ${result.appliedCount} remedies! Backend restarted on port 5050. Re-running live tests...`;
+            healerScanStatus.style.borderColor = 'var(--tag-green-fg)';
+          }
+          if (healerDiffContainer) healerDiffContainer.style.display = 'none';
+          btnHealerApply.style.display = 'none';
+
+          if (btnHealerRollback && lastBackupDir) {
+            btnHealerRollback.style.display = 'inline-block';
+          }
+
+          // Trigger live re-test automatically
+          setTimeout(() => {
+            if (btnRunDiagnostics) {
+              btnRunDiagnostics.click();
+            }
+          }, 600);
+        } else {
+          if (healerScanStatus) {
+            healerScanStatus.textContent = `Apply Error: ${(result.errors || []).join('; ')}`;
+            healerScanStatus.style.borderColor = 'var(--tag-red-fg)';
+          }
+        }
+      } catch (err) {
+        if (healerScanStatus) {
+          healerScanStatus.textContent = `Network Error: ${err.message}`;
+          healerScanStatus.style.borderColor = 'var(--tag-red-fg)';
+        }
+      } finally {
+        btnHealerApply.disabled = false;
+        btnHealerApply.textContent = 'Apply Remedies to Codebase';
+      }
+    });
+  }
+
+  if (btnHealerRollback) {
+    btnHealerRollback.addEventListener('click', async () => {
+      if (!lastBackupDir) return;
+      const projectDir = (healerProjectDir ? healerProjectDir.value.trim() : '') || '.';
+      btnHealerRollback.disabled = true;
+      btnHealerRollback.textContent = 'Rolling back...';
+
+      try {
+        const res = await fetch('/_faultmesh/healer/rollback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectDir, backupDir: lastBackupDir }),
+        });
+        const result = await res.json();
+        if (result.success) {
+          if (healerScanStatus) {
+            healerScanStatus.textContent = `Rollback complete. Restored original files. Backend restarted on port 5050. Re-running live tests...`;
+            healerScanStatus.style.borderColor = 'var(--border-default)';
+          }
+          btnHealerRollback.style.display = 'none';
+          if (btnHealerApply) btnHealerApply.style.display = 'inline-block';
+
+          // Trigger live re-test automatically to reflect rolled-back state
+          setTimeout(() => {
+            if (btnRunDiagnostics) {
+              btnRunDiagnostics.click();
+            }
+          }, 600);
+        } else {
+          if (healerScanStatus) {
+            healerScanStatus.textContent = `Rollback error: ${(result.errors || []).join('; ')}`;
+          }
+        }
+      } catch (err) {
+        if (healerScanStatus) {
+          healerScanStatus.textContent = `Rollback failed: ${err.message}`;
+        }
+      } finally {
+        btnHealerRollback.disabled = false;
+        btnHealerRollback.textContent = 'Rollback Last Patch';
+      }
+    });
   }
 
   // 9. Live Request SSE Stream

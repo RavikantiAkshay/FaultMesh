@@ -17,6 +17,7 @@
   },
   "scripts": {
     "start": "tsx src/server.ts",
+    "start:sample-vulnerable": "node scripts/start-sample.js",
     "build": "tsc && node scripts/copy-assets.js",
     "test": "vitest run",
     "test:watch": "vitest",

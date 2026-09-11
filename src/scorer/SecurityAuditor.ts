@@ -7,6 +7,10 @@ export class SecurityAuditor {
     this.targetUrl = targetUrl;
   }
 
+  setTargetUrl(url: string): void {
+    this.targetUrl = url;
+  }
+
   async runAudit(profile: 'secure' | 'vulnerable' = 'secure'): Promise<SecurityScorecard> {
     const checks: SecurityCheckResult[] = [];
     const recommendations: string[] = [];
@@ -62,11 +66,7 @@ export class SecurityAuditor {
     if (score >= 90) grade = 'A';
     else if (score >= 75) grade = 'B';
     else if (score >= 60) grade = 'C';
-    else if (score >= 45) grade = 'D';
-
-    if (recommendations.length === 0) {
-      recommendations.push('Your application passed all defensive security, header hygiene, and zero-damage injection checks.');
-    }
+    else if (score >= 40) grade = 'D';
 
     return {
       score,
@@ -98,37 +98,37 @@ export class SecurityAuditor {
     }
 
     try {
-      const res = await fetch(`${this.targetUrl}/api/data`);
+      const res = await fetch(`${this.targetUrl}/api/data`, { signal: AbortSignal.timeout(3000) });
       const latency = Date.now() - start;
       const nosniff = res.headers.get('x-content-type-options');
       const frameOptions = res.headers.get('x-frame-options');
 
-      const isSecure = Boolean(nosniff || frameOptions || profile === 'secure');
+      // Must have actual security headers present on the target response
+      const hasHeaders = nosniff === 'nosniff' && Boolean(frameOptions);
+
       return {
         id: 'sec_headers',
         name: 'Defensive Security Headers',
         category: 'headers',
         description,
         severity: 'high',
-        passed: isSecure,
+        passed: hasHeaders,
         latencyMs: latency,
-        details: isSecure
-          ? 'Defensive headers verified (nosniff and frame protection present).'
-          : 'Missing standard protective response headers.',
+        details: hasHeaders
+          ? 'Defensive headers verified (X-Content-Type-Options: nosniff and X-Frame-Options present).'
+          : 'Missing standard protective response headers (X-Content-Type-Options: nosniff and/or X-Frame-Options missing).',
         remediation: 'Configure response headers: add X-Content-Type-Options: nosniff and X-Frame-Options: DENY to prevent MIME sniffing and clickjacking.',
       };
-    } catch {
+    } catch (err: any) {
       return {
         id: 'sec_headers',
         name: 'Defensive Security Headers',
         category: 'headers',
         description,
         severity: 'high',
-        passed: profile === 'secure',
+        passed: false,
         latencyMs: Date.now() - start,
-        details: profile === 'secure'
-          ? 'Defensive headers verified.'
-          : 'Server connection failed or headers omitted.',
+        details: `Target connection failed (${err.message}). Ensure server is online.`,
         remediation: 'Ensure web server sets X-Content-Type-Options and X-Frame-Options.',
       };
     }
@@ -153,14 +153,20 @@ export class SecurityAuditor {
     }
 
     try {
+      const untrustedOrigin = 'https://untrusted-third-party-origin.com';
       const res = await fetch(`${this.targetUrl}/api/data`, {
-        headers: { 'Origin': 'https://untrusted-third-party-origin.com' },
+        headers: { 'Origin': untrustedOrigin },
+        signal: AbortSignal.timeout(3000),
       });
       const latency = Date.now() - start;
       const allowOrigin = res.headers.get('access-control-allow-origin');
       const allowCreds = res.headers.get('access-control-allow-credentials');
 
-      const isUnsafe = allowOrigin === '*' && allowCreds === 'true';
+      // Unsafe if wildcard '*' or reflecting untrusted origin
+      const isWildcard = allowOrigin === '*';
+      const isReflected = allowOrigin === untrustedOrigin;
+      const isUnsafe = isWildcard || (isReflected && allowCreds === 'true') || isWildcard;
+
       return {
         id: 'sec_cors',
         name: 'CORS & Origin Validation',
@@ -170,20 +176,20 @@ export class SecurityAuditor {
         passed: !isUnsafe,
         latencyMs: latency,
         details: isUnsafe
-          ? 'Dangerous CORS combination: wildcard origin with credentials allowed.'
+          ? `Permissive CORS configuration: Access-Control-Allow-Origin is '${allowOrigin}' for untrusted external origins.`
           : 'CORS headers safely reject or isolate untrusted third-party origins.',
         remediation: 'Ensure Access-Control-Allow-Origin never echoes wildcards alongside credentials.',
       };
-    } catch {
+    } catch (err: any) {
       return {
         id: 'sec_cors',
         name: 'CORS & Origin Validation',
         category: 'cors',
         description,
         severity: 'critical',
-        passed: profile === 'secure',
+        passed: false,
         latencyMs: Date.now() - start,
-        details: 'CORS policy correctly configured.',
+        details: `Target connection failed (${err.message}). Ensure server is online.`,
         remediation: 'Maintain explicit origin whitelisting.',
       };
     }
@@ -209,7 +215,7 @@ export class SecurityAuditor {
 
     try {
       const canarySecret = 'canary_secret_test_token_123';
-      const res = await fetch(`${this.targetUrl}/api/data?token=${canarySecret}`);
+      const res = await fetch(`${this.targetUrl}/api/data?token=${canarySecret}`, { signal: AbortSignal.timeout(3000) });
       const latency = Date.now() - start;
 
       return {
@@ -223,16 +229,16 @@ export class SecurityAuditor {
         details: 'No sensitive credentials required or leaked in URL query parameters.',
         remediation: 'Continue enforcing Authorization header authentication rather than URL parameters.',
       };
-    } catch {
+    } catch (err: any) {
       return {
         id: 'sec_leakage',
         name: 'URL Credential & Secret Exposure',
         category: 'leakage',
         description,
         severity: 'critical',
-        passed: profile === 'secure',
+        passed: false,
         latencyMs: Date.now() - start,
-        details: 'URL query parameters are protected against sensitive token leakage.',
+        details: `Target connection failed (${err.message}). Ensure server is online.`,
         remediation: 'Transmit credentials via Authorization headers only.',
       };
     }
@@ -257,7 +263,7 @@ export class SecurityAuditor {
     }
 
     try {
-      const res = await fetch(`${this.targetUrl}/api/profile`);
+      const res = await fetch(`${this.targetUrl}/api/profile`, { signal: AbortSignal.timeout(3000) });
       const latency = Date.now() - start;
       const text = await res.text();
 
@@ -280,16 +286,16 @@ export class SecurityAuditor {
           : 'Outbound JSON responses safely sanitized: 0 credentials or database secrets leaked.',
         remediation: 'Sanitize all user and account response models prior to JSON serialization.',
       };
-    } catch {
+    } catch (err: any) {
       return {
         id: 'sec_pii',
         name: 'Response PII & Secret Body Scanner',
         category: 'pii-leakage',
         description,
         severity: 'critical',
-        passed: profile === 'secure',
+        passed: false,
         latencyMs: Date.now() - start,
-        details: 'Outbound responses sanitized against credential exposure.',
+        details: `Target connection failed (${err.message}). Ensure server is online.`,
         remediation: 'Implement outbound response data filters.',
       };
     }
@@ -314,36 +320,61 @@ export class SecurityAuditor {
     }
 
     try {
-      const res = await fetch(`${this.targetUrl}/api/health`);
+      // Probe crash endpoint to evaluate unhandled error handling
+      const res = await fetch(`${this.targetUrl}/api/crash`, { signal: AbortSignal.timeout(3000) });
       const latency = Date.now() - start;
       const text = await res.text();
 
-      const leaksStackTrace = text.includes('at Object') || text.includes('node:internal') || text.includes('Traceback');
+      const leaksStackTrace = text.includes('at Object') ||
+        text.includes('node:internal') ||
+        text.includes('Traceback') ||
+        text.includes('"stack":') ||
+        text.includes('filePath:');
+
+      const passed = !leaksStackTrace;
       return {
         id: 'sec_errors',
         name: 'Error Sanitization & Stack Trace Exposure',
         category: 'errors',
         description,
         severity: 'medium',
-        passed: !leaksStackTrace,
+        passed,
         latencyMs: latency,
         details: leaksStackTrace
-          ? 'Server exposes raw stack traces in error bodies.'
+          ? 'Server exposes raw stack traces and internal file paths in error bodies.'
           : 'Server responses are clean and sanitized with no internal runtime traces.',
         remediation: 'Ensure centralized error middleware catches unhandled exceptions and returns sanitized JSON error payloads.',
       };
-    } catch {
-      return {
-        id: 'sec_errors',
-        name: 'Error Sanitization & Stack Trace Exposure',
-        category: 'errors',
-        description,
-        severity: 'medium',
-        passed: profile === 'secure',
-        latencyMs: Date.now() - start,
-        details: 'Server error responses are sanitized.',
-        remediation: 'Sanitize 5xx error responses.',
-      };
+    } catch (err: any) {
+      // If /api/crash is not implemented, try /api/health
+      try {
+        const res2 = await fetch(`${this.targetUrl}/api/health`, { signal: AbortSignal.timeout(2000) });
+        const text2 = await res2.text();
+        const leaks2 = text2.includes('at Object') || text2.includes('Traceback');
+        return {
+          id: 'sec_errors',
+          name: 'Error Sanitization & Stack Trace Exposure',
+          category: 'errors',
+          description,
+          severity: 'medium',
+          passed: !leaks2,
+          latencyMs: Date.now() - start,
+          details: leaks2 ? 'Server exposes raw stack traces.' : 'Server responses are clean.',
+          remediation: 'Sanitize 5xx error responses.',
+        };
+      } catch (err2: any) {
+        return {
+          id: 'sec_errors',
+          name: 'Error Sanitization & Stack Trace Exposure',
+          category: 'errors',
+          description,
+          severity: 'medium',
+          passed: false,
+          latencyMs: Date.now() - start,
+          details: `Target connection failed (${err.message}). Ensure server is online.`,
+          remediation: 'Sanitize 5xx error responses.',
+        };
+      }
     }
   }
 
@@ -366,13 +397,13 @@ export class SecurityAuditor {
     }
 
     try {
-      const res = await fetch(`${this.targetUrl}/api/files?name=../../../../etc/passwd`);
+      const res = await fetch(`${this.targetUrl}/api/files?name=../../../../etc/passwd`, { signal: AbortSignal.timeout(3000) });
       const latency = Date.now() - start;
       const text = await res.text();
 
       // Check if server leaked etc/passwd or rejected
       const leakedPasswd = text.includes('root:x:0:0') || text.includes('daemon:');
-      const passed = !leakedPasswd && (res.status === 400 || res.status === 404 || res.status === 200 && !text.includes('root:'));
+      const passed = !leakedPasswd && (res.status === 400 || res.status === 403 || res.status === 404 || (res.status === 200 && !text.includes('root:')));
 
       return {
         id: 'sec_traversal',
@@ -387,16 +418,16 @@ export class SecurityAuditor {
           : 'Server returned arbitrary file contents for parent path traversal sequence.',
         remediation: 'Sanitize file paths using path.resolve() within an approved base directory boundary.',
       };
-    } catch {
+    } catch (err: any) {
       return {
         id: 'sec_traversal',
         name: 'Path Traversal & Directory Escape (../)',
         category: 'traversal',
         description,
         severity: 'critical',
-        passed: profile === 'secure',
+        passed: false,
         latencyMs: Date.now() - start,
-        details: 'Path traversal sequences safely contained.',
+        details: `Target connection failed (${err.message}). Ensure server is online.`,
         remediation: 'Sanitize user-provided file paths.',
       };
     }
@@ -422,12 +453,12 @@ export class SecurityAuditor {
 
     try {
       const canaryTag = '<faultmesh-canary-test>';
-      const res = await fetch(`${this.targetUrl}/api/data?q=${encodeURIComponent(canaryTag)}' OR '1'='1`);
+      const res = await fetch(`${this.targetUrl}/api/data?q=${encodeURIComponent(canaryTag)}' OR '1'='1`, { signal: AbortSignal.timeout(3000) });
       const latency = Date.now() - start;
       const body = await res.text();
 
       // Check if server executes raw or safely handles schema validation
-      const echoesUnescapedRawHtml = body.includes(canaryTag) && res.headers.get('content-type')?.includes('text/html');
+      const echoesUnescapedRawHtml = body.includes(canaryTag) && Boolean(res.headers.get('content-type')?.includes('text/html'));
 
       return {
         id: 'sec_injection',
@@ -440,16 +471,16 @@ export class SecurityAuditor {
         details: 'Inert syntax balance and canary probes handled safely: 0 database mutation, input safely constrained.',
         remediation: 'Maintain parameterized query enforcement and input validation schemas across all endpoints.',
       };
-    } catch {
+    } catch (err: any) {
       return {
         id: 'sec_injection',
         name: 'Safe SQL/NoSQL & Canary Input Probing',
         category: 'injection',
         description,
         severity: 'critical',
-        passed: profile === 'secure',
+        passed: false,
         latencyMs: Date.now() - start,
-        details: 'Input validation verified via inert canary probe.',
+        details: `Target connection failed (${err.message}). Ensure server is online.`,
         remediation: 'Enforce parameterized queries and strict schema validation.',
       };
     }
