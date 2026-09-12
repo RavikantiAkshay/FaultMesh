@@ -157,4 +157,62 @@ def read_root():
     expect(corsPatch).toBeDefined();
     expect(corsPatch?.remediatedContent).toContain('allow_origins=["http://localhost:3000"');
   });
+
+  it('detects and remedies Go applications with Gin router', async () => {
+    fs.writeFileSync(path.join(tempDir, 'go.mod'), 'module testapi\n\ngo 1.22\n\nrequire github.com/gin-gonic/gin v1.9.1\n');
+
+    const goCode = `package main
+
+import (
+\t"github.com/gin-gonic/gin"
+)
+
+func main() {
+\tr := gin.Default()
+\tr.GET("/ping", func(c *gin.Context) {
+\t\tc.JSON(200, gin.H{"message": "pong"})
+\t})
+\tr.Run(":8080")
+}
+`;
+    fs.writeFileSync(path.join(tempDir, 'main.go'), goCode);
+
+    const scanResult = await AutoHealer.scan({
+      projectDir: tempDir,
+      failedChecks: [
+        'Defensive Security Headers',
+        'Oversized Payload & Buffer OOM Defense (HTTP 413)',
+        'Slowloris Connection Drip Defense',
+      ],
+    });
+
+    expect(scanResult.success).toBe(true);
+    expect(scanResult.framework).toBe('go-gin');
+    expect(scanResult.entryFile).toBe('main.go');
+    expect(scanResult.patches.length).toBe(3);
+
+    const secPatch = scanResult.patches.find(p => p.checkName.includes('Headers'));
+    expect(secPatch).toBeDefined();
+    expect(secPatch?.remediatedContent).toContain('X-Content-Type-Options');
+
+    const payloadPatch = scanResult.patches.find(p => p.checkName.includes('Payload'));
+    expect(payloadPatch).toBeDefined();
+    expect(payloadPatch?.remediatedContent).toContain('http.MaxBytesReader');
+
+    const slowlorisPatch = scanResult.patches.find(p => p.checkName.includes('Slowloris'));
+    expect(slowlorisPatch).toBeDefined();
+    expect(slowlorisPatch?.remediatedContent).toContain('ReadHeaderTimeout');
+  });
+
+  it('detects Rust Cargo projects and reports framework accurately', async () => {
+    fs.writeFileSync(path.join(tempDir, 'Cargo.toml'), '[package]\nname = "test-rust"\nversion = "0.1.0"\n\n[dependencies]\nactix-web = "4"\n');
+    fs.mkdirSync(path.join(tempDir, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(tempDir, 'src', 'main.rs'), 'fn main() {}');
+
+    const scanResult = await AutoHealer.scan({ projectDir: tempDir });
+    expect(scanResult.success).toBe(true);
+    expect(scanResult.framework).toBe('rust-actix');
+    expect(scanResult.entryFile).toBe('src/main.rs');
+  });
 });
+

@@ -65,6 +65,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const healerBackupCheck = document.getElementById('healerBackupCheck');
   const btnHealerApply = document.getElementById('btnHealerApply');
   const btnHealerRollback = document.getElementById('btnHealerRollback');
+  const btnToggleAiSettings = document.getElementById('btnToggleAiSettings');
+  const healerAiSettingsPanel = document.getElementById('healerAiSettingsPanel');
+  const healerEngineBadge = document.getElementById('healerEngineBadge');
+  const healerEngineMode = document.getElementById('healerEngineMode');
+  const healerAiProvider = document.getElementById('healerAiProvider');
+  const healerAiKey = document.getElementById('healerAiKey');
+  const healerAiEndpoint = document.getElementById('healerAiEndpoint');
+  const aiKeyGroup = document.getElementById('aiKeyGroup');
+  const aiEndpointGroup = document.getElementById('aiEndpointGroup');
 
   const activityFeed = document.getElementById('activityFeed');
   const btnClearLog = document.getElementById('btnClearLog');
@@ -1534,14 +1543,72 @@ async def checkout(idempotency_key: str = Header(None)):
     });
   }
 
+  if (btnToggleAiSettings && healerAiSettingsPanel) {
+    btnToggleAiSettings.addEventListener('click', () => {
+      const isHidden = healerAiSettingsPanel.style.display === 'none';
+      healerAiSettingsPanel.style.display = isHidden ? 'block' : 'none';
+      btnToggleAiSettings.textContent = isHidden
+        ? 'Hide AI Healer Configuration'
+        : 'Configure AI Healer (Ollama / Claude / OpenAI / Gemini)';
+    });
+  }
+
+  if (healerAiProvider) {
+    healerAiProvider.addEventListener('change', () => {
+      const prov = healerAiProvider.value;
+      if (prov === 'ollama') {
+        if (aiKeyGroup) aiKeyGroup.style.display = 'none';
+        if (aiEndpointGroup) {
+          aiEndpointGroup.style.display = 'flex';
+          if (healerAiEndpoint) healerAiEndpoint.value = 'http://127.0.0.1:11434';
+        }
+      } else if (prov === 'custom') {
+        if (aiKeyGroup) aiKeyGroup.style.display = 'flex';
+        if (aiEndpointGroup) {
+          aiEndpointGroup.style.display = 'flex';
+          if (healerAiEndpoint) healerAiEndpoint.value = 'http://127.0.0.1:1234/v1';
+        }
+      } else {
+        if (aiKeyGroup) aiKeyGroup.style.display = 'flex';
+        if (aiEndpointGroup) aiEndpointGroup.style.display = 'none';
+      }
+    });
+  }
+
+  if (healerEngineMode && healerEngineBadge) {
+    healerEngineMode.addEventListener('change', () => {
+      const mode = healerEngineMode.value;
+      if (mode === 'ai') {
+        healerEngineBadge.textContent = 'Engine: AI Healer Agent (Universal)';
+        healerEngineBadge.className = 'engine-badge ai-agent';
+      } else if (mode === 'codemod') {
+        healerEngineBadge.textContent = 'Engine: Deterministic CodeMod';
+        healerEngineBadge.className = 'engine-badge codemod';
+      } else {
+        healerEngineBadge.textContent = 'Engine: CodeMod + AI Hybrid';
+        healerEngineBadge.className = 'engine-badge codemod';
+      }
+    });
+  }
+
+  function getAiConfigPayload() {
+    const engineMode = healerEngineMode ? healerEngineMode.value : 'hybrid';
+    const provider = healerAiProvider ? healerAiProvider.value : 'ollama';
+    const apiKey = healerAiKey ? healerAiKey.value.trim() : undefined;
+    const endpoint = healerAiEndpoint ? healerAiEndpoint.value.trim() : undefined;
+    return { engineMode, aiConfig: { provider, apiKey, endpoint } };
+  }
+
   if (btnHealerScan) {
     btnHealerScan.addEventListener('click', async () => {
       const projectDir = (healerProjectDir ? healerProjectDir.value.trim() : '') || '.';
+      const { engineMode, aiConfig } = getAiConfigPayload();
+
       btnHealerScan.disabled = true;
       btnHealerScan.textContent = 'Scanning...';
       if (healerScanStatus) {
         healerScanStatus.style.display = 'block';
-        healerScanStatus.textContent = `Scanning project at "${projectDir}"...`;
+        healerScanStatus.textContent = `Scanning project at "${projectDir}" using ${engineMode.toUpperCase()} engine...`;
       }
       if (healerDiffContainer) healerDiffContainer.style.display = 'none';
       if (healerActionsBar) healerActionsBar.style.display = 'none';
@@ -1556,7 +1623,7 @@ async def checkout(idempotency_key: str = Header(None)):
         const res = await fetch('/_faultmesh/healer/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectDir, failedChecks }),
+          body: JSON.stringify({ projectDir, failedChecks, engineMode, aiConfig }),
         });
         const result = await res.json();
         lastHealerScanResult = result;
@@ -1578,7 +1645,8 @@ async def checkout(idempotency_key: str = Header(None)):
         }
 
         if (healerScanStatus) {
-          healerScanStatus.textContent = `Detected ${result.framework.toUpperCase()} in "${result.entryFile}". Found ${result.patches.length} applicable resilience & security remediations:`;
+          const engineLabel = result.engineUsed === 'ai-agent' ? 'AI Agent' : (result.engineUsed === 'hybrid' ? 'Hybrid (CodeMod + AI)' : 'Deterministic CodeMod');
+          healerScanStatus.textContent = `Detected ${result.framework.toUpperCase()} in "${result.entryFile}". Found ${result.patches.length} applicable remediations (Engine: ${engineLabel}):`;
           healerScanStatus.style.borderColor = 'var(--border-default)';
         }
 
@@ -1597,10 +1665,16 @@ async def checkout(idempotency_key: str = Header(None)):
               return `<span class="diff-line context">${escapeHtml(line)}</span>`;
             }).join('');
 
+            const engineTagClass = p.engine === 'ai-agent' ? 'ai-agent' : 'codemod';
+            const engineTagLabel = p.engine === 'ai-agent' ? 'AI Agent' : 'CodeMod';
+
             return `
               <div class="diff-card">
                 <div class="diff-card-header">
-                  <span class="diff-card-title">${escapeHtml(p.checkName)}</span>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="diff-card-title">${escapeHtml(p.checkName)}</span>
+                    <span class="engine-badge ${engineTagClass}">${engineTagLabel}</span>
+                  </div>
                   <span class="diff-card-file">${escapeHtml(p.relativePath)}</span>
                 </div>
                 <pre class="diff-pre"><code>${diffLines}</code></pre>
@@ -1631,6 +1705,7 @@ async def checkout(idempotency_key: str = Header(None)):
       if (!lastHealerScanResult || !lastHealerScanResult.patches) return;
       const projectDir = (healerProjectDir ? healerProjectDir.value.trim() : '') || '.';
       const createBackup = healerBackupCheck ? healerBackupCheck.checked : true;
+      const { engineMode, aiConfig } = getAiConfigPayload();
 
       btnHealerApply.disabled = true;
       btnHealerApply.textContent = 'Applying Remedies...';
@@ -1639,7 +1714,7 @@ async def checkout(idempotency_key: str = Header(None)):
         const res = await fetch('/_faultmesh/healer/apply', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectDir, createBackup }),
+          body: JSON.stringify({ projectDir, createBackup, engineMode, aiConfig }),
         });
         const result = await res.json();
 

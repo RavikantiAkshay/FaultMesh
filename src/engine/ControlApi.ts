@@ -261,8 +261,10 @@ export class ControlApi {
         const body = raw ? JSON.parse(raw) : {};
         const projectDir = body.projectDir || '.';
         const failedChecks = body.failedChecks || [];
+        const aiConfig = body.aiConfig;
+        const engineMode = body.engineMode;
 
-        const scanResult = await AutoHealer.scan({ projectDir, failedChecks });
+        const scanResult = await AutoHealer.scan({ projectDir, failedChecks, aiConfig, engineMode });
         this.json(res, 200, scanResult);
       } catch (err: any) {
         this.json(res, 500, { error: 'AutoHealer scan error', details: err.message });
@@ -277,8 +279,10 @@ export class ControlApi {
         const projectDir = body.projectDir || '.';
         const patchIds = body.patchIds;
         const createBackup = body.createBackup !== false;
+        const aiConfig = body.aiConfig;
+        const engineMode = body.engineMode;
 
-        const applyResult = await AutoHealer.apply({ projectDir, patchIds, createBackup });
+        const applyResult = await AutoHealer.apply({ projectDir, patchIds, createBackup, aiConfig, engineMode });
 
         // If healing the sample backend, automatically restart it so memory updates immediately
         if (applyResult.success && projectDir.includes('vulnerable-backend')) {

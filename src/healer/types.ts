@@ -1,4 +1,34 @@
-export type BackendFramework = 'express' | 'fastify' | 'fastapi' | 'generic-node' | 'generic-python';
+export type BackendFramework =
+  | 'express'
+  | 'fastify'
+  | 'koa'
+  | 'nestjs'
+  | 'fastapi'
+  | 'flask'
+  | 'django'
+  | 'go-gin'
+  | 'go-chi'
+  | 'go-nethttp'
+  | 'rust-actix'
+  | 'rust-axum'
+  | 'java-spring'
+  | 'csharp-dotnet'
+  | 'generic-node'
+  | 'generic-python'
+  | 'generic-go'
+  | 'generic-rust'
+  | 'generic-java'
+  | 'generic-csharp'
+  | 'generic-backend';
+
+export type AiProviderType = 'ollama' | 'openai' | 'anthropic' | 'gemini' | 'custom';
+
+export interface AiProviderConfig {
+  provider: AiProviderType;
+  endpoint?: string;
+  apiKey?: string;
+  model?: string;
+}
 
 export interface HealPatch {
   id: string;
@@ -10,11 +40,14 @@ export interface HealPatch {
   diff: string;
   description: string;
   framework: BackendFramework;
+  engine?: 'codemod' | 'ai-agent';
 }
 
 export interface HealScanOptions {
   projectDir: string;
   failedChecks?: string[];
+  aiConfig?: AiProviderConfig;
+  engineMode?: 'codemod' | 'ai' | 'hybrid';
 }
 
 export interface HealScanResult {
@@ -24,12 +57,15 @@ export interface HealScanResult {
   entryFile?: string;
   patches: HealPatch[];
   warnings: string[];
+  engineUsed?: 'codemod' | 'ai-agent' | 'hybrid';
 }
 
 export interface HealApplyOptions {
   projectDir: string;
   patchIds?: string[];
   createBackup?: boolean;
+  aiConfig?: AiProviderConfig;
+  engineMode?: 'codemod' | 'ai' | 'hybrid';
 }
 
 export interface HealApplyResult {

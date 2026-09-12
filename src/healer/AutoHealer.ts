@@ -4,6 +4,8 @@ import { BackendFramework, HealApplyOptions, HealApplyResult, HealPatch, HealRol
 import { DiffGenerator } from './DiffGenerator.js';
 import { ExpressTransformers } from './transformers/ExpressTransformers.js';
 import { FastApiTransformers } from './transformers/FastApiTransformers.js';
+import { GoTransformers } from './transformers/GoTransformers.js';
+import { AiHealer } from './AiHealer.js';
 
 export class AutoHealer {
   private static BLACKLISTED_NAMES = [
@@ -45,7 +47,7 @@ export class AutoHealer {
         framework,
         projectRoot: resolvedDir,
         patches: [],
-        warnings: [...warnings, 'Could not locate server entry file (e.g. server.js, index.ts, main.py)'],
+        warnings: [...warnings, 'Could not locate server entry file (e.g. server.js, index.ts, main.py, main.go, main.rs)'],
       };
     }
 
@@ -74,32 +76,69 @@ export class AutoHealer {
           'Slowloris Connection Drip Defense',
         ];
 
+    // Check AI availability for universal multi-language and arbitrary error remediation
+    const aiAvailable = await AiHealer.isAvailable(options.aiConfig);
+    let engineUsed: 'codemod' | 'ai-agent' | 'hybrid' = 'codemod';
+
     // 3. Apply Transformations
     let workingContent = originalContent;
 
     for (const check of checksToEvaluate) {
       const lowerCheck = check.toLowerCase();
       let res: { modified: boolean; content: string; description: string } | null = null;
+      let usedAiForPatch = false;
 
-      if (framework === 'express' || framework === 'generic-node') {
-        if (lowerCheck.includes('header') || lowerCheck.includes('nosniff') || lowerCheck.includes('defensive')) {
-          res = ExpressTransformers.applyDefensiveHeaders(workingContent);
-        } else if (lowerCheck.includes('payload') || lowerCheck.includes('413') || lowerCheck.includes('oom')) {
-          res = ExpressTransformers.applyPayloadLimit(workingContent);
-        } else if (lowerCheck.includes('cors') || lowerCheck.includes('origin')) {
-          res = ExpressTransformers.applyCorsLockdown(workingContent);
-        } else if (lowerCheck.includes('error') || lowerCheck.includes('stack') || lowerCheck.includes('sanitization')) {
-          res = ExpressTransformers.applyErrorSanitization(workingContent);
-        } else if (lowerCheck.includes('slowloris') || lowerCheck.includes('drip') || lowerCheck.includes('timeout')) {
-          res = ExpressTransformers.applySocketTimeouts(workingContent);
+      // Tier 1: Deterministic CodeMod Transformers
+      if (options.engineMode !== 'ai') {
+        if (framework === 'express' || framework === 'generic-node') {
+          if (lowerCheck.includes('header') || lowerCheck.includes('nosniff') || lowerCheck.includes('defensive')) {
+            res = ExpressTransformers.applyDefensiveHeaders(workingContent);
+          } else if (lowerCheck.includes('payload') || lowerCheck.includes('413') || lowerCheck.includes('oom')) {
+            res = ExpressTransformers.applyPayloadLimit(workingContent);
+          } else if (lowerCheck.includes('cors') || lowerCheck.includes('origin')) {
+            res = ExpressTransformers.applyCorsLockdown(workingContent);
+          } else if (lowerCheck.includes('error') || lowerCheck.includes('stack') || lowerCheck.includes('sanitization')) {
+            res = ExpressTransformers.applyErrorSanitization(workingContent);
+          } else if (lowerCheck.includes('slowloris') || lowerCheck.includes('drip') || lowerCheck.includes('timeout')) {
+            res = ExpressTransformers.applySocketTimeouts(workingContent);
+          }
+        } else if (framework === 'fastapi' || framework === 'generic-python') {
+          if (lowerCheck.includes('header') || lowerCheck.includes('nosniff') || lowerCheck.includes('defensive')) {
+            res = FastApiTransformers.applyDefensiveHeaders(workingContent);
+          } else if (lowerCheck.includes('payload') || lowerCheck.includes('413') || lowerCheck.includes('oom')) {
+            res = FastApiTransformers.applyPayloadLimit(workingContent);
+          } else if (lowerCheck.includes('cors') || lowerCheck.includes('origin')) {
+            res = FastApiTransformers.applyCorsLockdown(workingContent);
+          }
+        } else if (framework === 'go-gin' || framework === 'go-nethttp' || framework === 'generic-go') {
+          if (lowerCheck.includes('header') || lowerCheck.includes('nosniff') || lowerCheck.includes('defensive')) {
+            res = GoTransformers.applyDefensiveHeaders(workingContent);
+          } else if (lowerCheck.includes('payload') || lowerCheck.includes('413') || lowerCheck.includes('oom')) {
+            res = GoTransformers.applyPayloadLimit(workingContent);
+          } else if (lowerCheck.includes('slowloris') || lowerCheck.includes('drip') || lowerCheck.includes('timeout')) {
+            res = GoTransformers.applyServerTimeouts(workingContent);
+          }
         }
-      } else if (framework === 'fastapi' || framework === 'generic-python') {
-        if (lowerCheck.includes('header') || lowerCheck.includes('nosniff') || lowerCheck.includes('defensive')) {
-          res = FastApiTransformers.applyDefensiveHeaders(workingContent);
-        } else if (lowerCheck.includes('payload') || lowerCheck.includes('413') || lowerCheck.includes('oom')) {
-          res = FastApiTransformers.applyPayloadLimit(workingContent);
-        } else if (lowerCheck.includes('cors') || lowerCheck.includes('origin')) {
-          res = FastApiTransformers.applyCorsLockdown(workingContent);
+      }
+
+      // Tier 2: AI Healer Agent (Universal Multi-Language & Arbitrary Error Remediation)
+      if ((!res || !res.modified) && (options.engineMode === 'ai' || options.engineMode === 'hybrid' || aiAvailable.available)) {
+        const aiResult = await AiHealer.generateRemediation({
+          filePath: entryFile,
+          originalContent: workingContent,
+          framework,
+          failedChecks: [check],
+          config: options.aiConfig,
+        });
+
+        if (aiResult.success && aiResult.content !== workingContent) {
+          res = {
+            modified: true,
+            content: aiResult.content,
+            description: aiResult.description,
+          };
+          usedAiForPatch = true;
+          engineUsed = engineUsed === 'codemod' ? 'ai-agent' : 'hybrid';
         }
       }
 
@@ -117,6 +156,7 @@ export class AutoHealer {
           diff,
           description: res.description,
           framework,
+          engine: usedAiForPatch ? 'ai-agent' : 'codemod',
         });
 
         // Update workingContent for sequential compounding remediations
@@ -131,6 +171,7 @@ export class AutoHealer {
       entryFile,
       patches,
       warnings,
+      engineUsed,
     };
   }
 
@@ -152,7 +193,11 @@ export class AutoHealer {
     }
 
     // Run a fresh scan to generate latest patches
-    const scanResult = await this.scan({ projectDir: resolvedDir });
+    const scanResult = await this.scan({
+      projectDir: resolvedDir,
+      aiConfig: options.aiConfig,
+      engineMode: options.engineMode,
+    });
     if (!scanResult.success || scanResult.patches.length === 0) {
       return {
         success: true,
@@ -343,27 +388,120 @@ export class AutoHealer {
     // 2. Python detection
     if (fs.existsSync(reqPath) || fs.existsSync(pyprojectPath)) {
       let isFastApi = false;
-      if (fs.existsSync(reqPath)) {
-        const reqContent = fs.readFileSync(reqPath, 'utf8');
-        if (reqContent.includes('fastapi')) isFastApi = true;
-      }
-      if (fs.existsSync(pyprojectPath)) {
-        const pyContent = fs.readFileSync(pyprojectPath, 'utf8');
-        if (pyContent.includes('fastapi')) isFastApi = true;
-      }
+      let isFlask = false;
+      let isDjango = false;
 
-      framework = isFastApi ? 'fastapi' : 'generic-python';
+      const checkPyManifest = (content: string) => {
+        if (content.includes('fastapi')) isFastApi = true;
+        if (content.includes('flask')) isFlask = true;
+        if (content.includes('django')) isDjango = true;
+      };
+
+      if (fs.existsSync(reqPath)) checkPyManifest(fs.readFileSync(reqPath, 'utf8'));
+      if (fs.existsSync(pyprojectPath)) checkPyManifest(fs.readFileSync(pyprojectPath, 'utf8'));
+
+      if (isFastApi) framework = 'fastapi';
+      else if (isFlask) framework = 'flask';
+      else if (isDjango) framework = 'django';
+      else framework = 'generic-python';
 
       const commonPythonEntries = [
         'main.py', 'app.py',
         'src/main.py', 'src/app.py',
         'server.py', 'src/server.py',
+        'wsgi.py', 'asgi.py',
       ];
 
       for (const entry of commonPythonEntries) {
         if (fs.existsSync(path.join(projectDir, entry))) {
           return { framework, entryFile: entry, warnings };
         }
+      }
+    }
+
+    // 3. Go detection
+    const goModPath = path.join(projectDir, 'go.mod');
+    if (fs.existsSync(goModPath)) {
+      try {
+        const goMod = fs.readFileSync(goModPath, 'utf8');
+        if (goMod.includes('gin-gonic/gin')) {
+          framework = 'go-gin';
+        } else if (goMod.includes('go-chi/chi')) {
+          framework = 'go-chi';
+        } else {
+          framework = 'generic-go';
+        }
+      } catch {
+        framework = 'generic-go';
+      }
+
+      const commonGoEntries = [
+        'main.go', 'server.go',
+        'cmd/server/main.go', 'cmd/main.go',
+        'src/main.go',
+      ];
+
+      for (const entry of commonGoEntries) {
+        if (fs.existsSync(path.join(projectDir, entry))) {
+          return { framework, entryFile: entry, warnings };
+        }
+      }
+    }
+
+    // 4. Rust detection
+    const cargoPath = path.join(projectDir, 'Cargo.toml');
+    if (fs.existsSync(cargoPath)) {
+      try {
+        const cargo = fs.readFileSync(cargoPath, 'utf8');
+        if (cargo.includes('actix-web')) framework = 'rust-actix';
+        else if (cargo.includes('axum')) framework = 'rust-axum';
+        else framework = 'generic-rust';
+      } catch {
+        framework = 'generic-rust';
+      }
+
+      const commonRustEntries = ['src/main.rs', 'main.rs', 'src/bin/server.rs'];
+      for (const entry of commonRustEntries) {
+        if (fs.existsSync(path.join(projectDir, entry))) {
+          return { framework, entryFile: entry, warnings };
+        }
+      }
+    }
+
+    // 5. Java / Spring Boot detection
+    const pomPath = path.join(projectDir, 'pom.xml');
+    const gradlePath = path.join(projectDir, 'build.gradle');
+    if (fs.existsSync(pomPath) || fs.existsSync(gradlePath)) {
+      framework = 'java-spring';
+      const commonJavaEntries = [
+        'src/main/java/com/example/Application.java',
+        'src/main/java/Application.java',
+        'src/main/java/Main.java',
+      ];
+      for (const entry of commonJavaEntries) {
+        if (fs.existsSync(path.join(projectDir, entry))) {
+          return { framework, entryFile: entry, warnings };
+        }
+      }
+    }
+
+    // 6. Generic File Fallback (works even without package manifest)
+    const genericFallbacks: [string, BackendFramework][] = [
+      ['main.go', 'generic-go'],
+      ['server.go', 'generic-go'],
+      ['src/main.rs', 'generic-rust'],
+      ['main.py', 'generic-python'],
+      ['app.py', 'generic-python'],
+      ['server.js', 'generic-node'],
+      ['index.js', 'generic-node'],
+      ['server.ts', 'generic-node'],
+      ['index.ts', 'generic-node'],
+      ['Program.cs', 'csharp-dotnet'],
+    ];
+
+    for (const [entry, fw] of genericFallbacks) {
+      if (fs.existsSync(path.join(projectDir, entry))) {
+        return { framework: fw, entryFile: entry, warnings };
       }
     }
 

@@ -1395,6 +1395,78 @@ button {
   flex: 1;
 }
 
+.healer-engine-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+}
+
+.btn-engine-toggle {
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  background: none;
+  border: none;
+}
+
+.btn-engine-toggle:hover {
+  color: var(--accent-hover);
+}
+
+.engine-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.engine-badge.codemod {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.engine-badge.ai-agent {
+  background: rgba(168, 85, 247, 0.15);
+  color: #a855f7;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.healer-ai-panel {
+  padding: 12px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+}
+
+.ai-config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.ai-config-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ai-config-item label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ai-config-item select,
+.ai-config-item input {
+  font-size: 11px;
+  padding: 6px 8px;
+}
+
 .healer-status-bar {
   padding: 10px 14px;
   border-radius: 6px;

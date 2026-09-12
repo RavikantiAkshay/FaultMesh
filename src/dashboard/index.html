@@ -325,6 +325,42 @@
           </div>
         </div>
 
+        <div class="healer-engine-bar">
+          <button id="btnToggleAiSettings" class="btn-text btn-engine-toggle" type="button">Configure AI Healer (Ollama / Claude / OpenAI / Gemini)</button>
+          <span id="healerEngineBadge" class="engine-badge codemod">Engine: CodeMod + AI Hybrid</span>
+        </div>
+
+        <div id="healerAiSettingsPanel" class="healer-ai-panel" style="display: none;">
+          <div class="ai-config-grid">
+            <div class="ai-config-item">
+              <label for="healerEngineMode">Remediation Mode:</label>
+              <select id="healerEngineMode" class="form-input select-healer-engine">
+                <option value="hybrid">Hybrid (Deterministic CodeMod + AI Agent)</option>
+                <option value="codemod">Deterministic AST CodeMod Only (Fast, Free)</option>
+                <option value="ai">AI Healer Agent Only (Universal Multi-Language)</option>
+              </select>
+            </div>
+            <div class="ai-config-item">
+              <label for="healerAiProvider">AI Provider:</label>
+              <select id="healerAiProvider" class="form-input select-ai-provider">
+                <option value="ollama">Local Ollama (Free / Offline - http://127.0.0.1:11434)</option>
+                <option value="anthropic">Anthropic (Claude 3.5 Sonnet)</option>
+                <option value="openai">OpenAI (GPT-4o)</option>
+                <option value="gemini">Google Gemini (Gemini 1.5 Flash)</option>
+                <option value="custom">Custom OpenAI-Compatible Endpoint</option>
+              </select>
+            </div>
+            <div class="ai-config-item" id="aiKeyGroup" style="display: none;">
+              <label for="healerAiKey">API Key:</label>
+              <input type="password" id="healerAiKey" class="form-input" placeholder="sk-..." spellcheck="false">
+            </div>
+            <div class="ai-config-item" id="aiEndpointGroup">
+              <label for="healerAiEndpoint">Endpoint URL:</label>
+              <input type="text" id="healerAiEndpoint" class="form-input" value="http://127.0.0.1:11434" placeholder="http://127.0.0.1:11434" spellcheck="false">
+            </div>
+          </div>
+        </div>
+
         <div id="healerScanStatus" class="healer-status-bar" style="display: none;"></div>
 
         <div id="healerDiffContainer" class="healer-diff-wrapper" style="display: none;"></div>
