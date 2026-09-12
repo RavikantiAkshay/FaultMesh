@@ -1,6 +1,6 @@
 /**
- * FaultMesh — Autonomous Red Chaos Team Engine (Powered by ECC)
- * Core Type Definitions
+ * FaultMesh — Autonomous Red Chaos Team Engine
+ * Type definitions for multi-wave adversarial campaigns and agent personas.
  */
 
 export type RedTeamSpecialty =

@@ -54,7 +54,7 @@
           <button id="tabResilience" class="diag-tab active" type="button">Network Resilience (10 Checks)</button>
           <button id="tabSecurity" class="diag-tab" type="button">Security &amp; Protocol (14 Checks)</button>
           <button id="tabStorm" class="diag-tab" type="button">Traffic Storms &amp; DoS (8 Checks)</button>
-          <button id="tabRedTeam" class="diag-tab diag-tab-redteam" type="button">Red Chaos Team (ECC)</button>
+          <button id="tabRedTeam" class="diag-tab diag-tab-redteam" type="button">Red Chaos Team (Agentic)</button>
         </div>
       </div>
 
@@ -100,13 +100,13 @@
         </div>
       </div>
 
-      <!-- Autonomous Red Chaos Team Engine Panel (Powered by ECC) -->
+      <!-- Autonomous Red Chaos Team Engine Panel -->
       <div id="redTeamPanel" class="redteam-panel" style="display: none;">
-        <!-- 1. ECC Squadron Persona Badges -->
+        <!-- 1. Red Squadron Persona Badges -->
         <div class="redteam-squadron-header">
           <div class="squadron-title-group">
             <span class="squadron-badge">AGENTIC SQUADRON</span>
-            <h4>Enterprise Claude Code (ECC) Agent Personas</h4>
+            <h4>Autonomous Red Team Agent Personas</h4>
           </div>
           <span class="squadron-status-tag">5 Active Personas Armed</span>
         </div>
@@ -220,7 +220,7 @@
               <span id="redTeamActivePersonaPill" class="active-persona-pill">Awaiting Launch</span>
             </div>
             <div id="redTeamConsoleLogs" class="redteam-terminal-log">
-              <div class="terminal-line text-muted">&gt; Red Chaos Team Engine standby. Ready to deploy ECC agent personas against target.</div>
+              <div class="terminal-line text-muted">&gt; Red Chaos Team Engine standby. Ready to deploy autonomous agent personas against target.</div>
             </div>
           </div>
         </div>
@@ -526,7 +526,7 @@
         </div>
 
         <div class="healer-engine-bar">
-          <button id="btnToggleAiSettings" class="btn-text btn-engine-toggle" type="button">Configure AI Healer (Ollama / Claude / OpenAI / Gemini)</button>
+          <button id="btnToggleAiSettings" class="btn-text btn-engine-toggle" type="button">Configure AI Healer (Local LLM / Cloud AI Providers)</button>
           <span id="healerEngineBadge" class="engine-badge codemod">Engine: CodeMod + AI Hybrid</span>
         </div>
 
@@ -543,11 +543,11 @@
             <div class="ai-config-item">
               <label for="healerAiProvider">AI Provider:</label>
               <select id="healerAiProvider" class="form-input select-ai-provider">
-                <option value="ollama">Local Ollama (Free / Offline - http://127.0.0.1:11434)</option>
-                <option value="anthropic">Anthropic (Claude 3.5 Sonnet)</option>
-                <option value="openai">OpenAI (GPT-4o)</option>
-                <option value="gemini">Google Gemini (Gemini 1.5 Flash)</option>
-                <option value="custom">Custom OpenAI-Compatible Endpoint</option>
+                <option value="ollama">Local Offline LLM (http://127.0.0.1:11434)</option>
+                <option value="custom">Custom Inference / HTTP Endpoint</option>
+                <option value="openai">OpenAI-Compatible API</option>
+                <option value="anthropic">Anthropic API</option>
+                <option value="gemini">Google Gemini API</option>
               </select>
             </div>
             <div class="ai-config-item" id="aiKeyGroup" style="display: none;">

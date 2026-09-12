@@ -31,7 +31,7 @@ describe('Red Team Control API (Integration Tests)', () => {
     await controlApi.stop();
   });
 
-  it('GET /_faultmesh/redteam/personas returns loaded ECC agent personas', async () => {
+  it('GET /_faultmesh/redteam/personas returns loaded agent personas', async () => {
     const res = await fetch(`http://127.0.0.1:${port}/_faultmesh/redteam/personas`);
     expect(res.status).toBe(200);
 

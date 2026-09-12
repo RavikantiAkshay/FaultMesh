@@ -364,13 +364,13 @@ export class ControlApi {
       return;
     }
 
-    // 8.8 Autonomous Red Chaos Team Engine (Powered by ECC)
+    // 8.8 Autonomous Red Chaos Team Engine
     if (pathname === '/_faultmesh/redteam/personas' && req.method === 'GET') {
       try {
         const personas = await this.eccBridge.getPersonas();
         this.json(res, 200, { success: true, personas });
       } catch (err: any) {
-        this.json(res, 500, { error: 'Failed to load ECC personas', details: err.message });
+        this.json(res, 500, { error: 'Failed to load agent personas', details: err.message });
       }
       return;
     }

@@ -1,6 +1,6 @@
 /**
  * FaultMesh — Autonomous Red Chaos Team Engine
- * RedTeamEngine: Coordinates adversarial multi-wave assault campaigns using ECC personas.
+ * RedTeamEngine: Coordinates adversarial multi-wave assault campaigns using autonomous agent personas.
  */
 
 import http from 'node:http';
@@ -121,8 +121,8 @@ export class RedTeamEngine {
 
       // Phase 2: Weaponization
       this.currentPhase = 'weaponize';
-      this.currentWaveName = 'ECC Weaponization & Strategy Formulation';
-      this.addLog(0, 'ECC-SYNTHESIZER', `Formulating ${waves.length} assault waves mapped to ${personas.length} active ECC personas`, 'info');
+      this.currentWaveName = 'Weaponization & Strategy Formulation';
+      this.addLog(0, 'CHAOS-SYNTHESIZER', `Formulating ${waves.length} assault waves mapped to ${personas.length} active agent personas`, 'info');
       this.emitProgress();
       await this.sleep(400);
 

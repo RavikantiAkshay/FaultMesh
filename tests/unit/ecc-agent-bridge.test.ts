@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { EccAgentBridge } from '../../src/redteam/EccAgentBridge.js';
 
 describe('EccAgentBridge (Unit Tests)', () => {
-  it('discovers and loads core ECC agent personas', async () => {
+  it('discovers and loads core agent personas', async () => {
     const bridge = new EccAgentBridge();
     const personas = await bridge.getPersonas();
 

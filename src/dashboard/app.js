@@ -966,8 +966,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (tabRedTeam) tabRedTeam.classList.add('active');
       if (standardAuditPanel) standardAuditPanel.style.display = 'none';
       if (redTeamPanel) redTeamPanel.style.display = 'flex';
-      if (diagHeaderTitle) diagHeaderTitle.textContent = 'Autonomous Red Chaos Team Engine (Powered by ECC)';
-      if (diagHeaderSubtitle) diagHeaderSubtitle.textContent = 'Deploy autonomous ECC agent personas armed with multi-wave fuzzing, compound network fault injections, and system survivability scoring.';
+      if (diagHeaderTitle) diagHeaderTitle.textContent = 'Autonomous Red Chaos Team Engine';
+      if (diagHeaderSubtitle) diagHeaderSubtitle.textContent = 'Deploy autonomous agent personas armed with multi-wave fuzzing, compound network fault injections, and system survivability scoring.';
       loadRedTeamPersonas();
       refreshRedTeamStatus();
       return;
@@ -1863,7 +1863,7 @@ async def checkout(idempotency_key: str = Header(None)):
       healerAiSettingsPanel.style.display = isHidden ? 'block' : 'none';
       btnToggleAiSettings.textContent = isHidden
         ? 'Hide AI Healer Configuration'
-        : 'Configure AI Healer (Ollama / Claude / OpenAI / Gemini)';
+        : 'Configure AI Healer (Local LLM / Cloud AI Providers)';
     });
   }
 
@@ -2311,7 +2311,7 @@ async def checkout(idempotency_key: str = Header(None)):
   });
 
   // =========================================================================
-  // AUTONOMOUS RED CHAOS TEAM ENGINE (ECC) CONTROLLER
+  // AUTONOMOUS RED CHAOS TEAM ENGINE CONTROLLER
   // =========================================================================
 
   async function loadRedTeamPersonas() {
@@ -2381,7 +2381,7 @@ async def checkout(idempotency_key: str = Header(None)):
         timestamp: Date.now(),
         waveNumber: 0,
         persona: 'RED-COMMAND',
-        message: `Deploying ECC Red Chaos Team [${intensity.toUpperCase()} assault mode] against ${targetUrl}...`,
+        message: `Deploying Autonomous Red Chaos Team [${intensity.toUpperCase()} assault mode] against ${targetUrl}...`,
         type: 'info',
       });
     }

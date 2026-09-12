@@ -1,6 +1,6 @@
 /**
  * FaultMesh — Autonomous Red Chaos Team Engine
- * ECC Agent Bridge: Loads and translates Enterprise Claude Code (ECC) personas into active attack strategies.
+ * Agent Squadron Bridge: Loads and translates autonomous agent personas into active attack strategies.
  */
 
 import fs from 'node:fs';
@@ -210,8 +210,8 @@ export class EccAgentBridge {
       id,
       name: parsedFm.name || id,
       callSign,
-      description: parsedFm.description || `Autonomous ECC Red Team agent specialized in ${specialty}.`,
-      model: parsedFm.model || 'claude-3-5-sonnet',
+      description: parsedFm.description || `Autonomous Red Team agent specialized in ${specialty}.`,
+      model: parsedFm.model || 'autonomous-agent-v1',
       tools: parsedFm.tools || ['view_file', 'grep_search', 'run_command'],
       specialty,
       huntTargets: huntTargets.slice(0, 8),
@@ -239,8 +239,8 @@ export class EccAgentBridge {
       id,
       name: titles[id] || id,
       callSign,
-      description: `Autonomous ECC Red Team Agent Persona targeting ${specialty} vulnerabilities.`,
-      model: 'claude-3-5-sonnet',
+      description: `Autonomous Red Team Agent Persona targeting ${specialty} vulnerabilities.`,
+      model: 'autonomous-agent-v1',
       tools: ['view_file', 'grep_search', 'run_command'],
       specialty,
       huntTargets,
