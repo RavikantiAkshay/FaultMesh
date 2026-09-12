@@ -74,6 +74,9 @@ export class AutoHealer {
           'CORS & Origin Validation',
           'Error Sanitization & Stack Trace Exposure',
           'Slowloris Connection Drip Defense',
+          'Host Header Poisoning & Reflection',
+          'Path Traversal & Directory Escape (../)',
+          'Duplicate Request Idempotency Protection',
         ];
 
     // Check AI availability for universal multi-language and arbitrary error remediation
@@ -91,7 +94,13 @@ export class AutoHealer {
       // Tier 1: Deterministic CodeMod Transformers
       if (options.engineMode !== 'ai') {
         if (framework === 'express' || framework === 'generic-node') {
-          if (lowerCheck.includes('header') || lowerCheck.includes('nosniff') || lowerCheck.includes('defensive')) {
+          if (lowerCheck.includes('host')) {
+            res = ExpressTransformers.applyHostHeaderValidation(workingContent);
+          } else if (lowerCheck.includes('traversal') || lowerCheck.includes('directory escape') || lowerCheck.includes('path')) {
+            res = ExpressTransformers.applyPathTraversalGuard(workingContent);
+          } else if (lowerCheck.includes('idempotency') || lowerCheck.includes('concurrency') || lowerCheck.includes('race condition') || lowerCheck.includes('race-condition') || lowerCheck.includes('duplicate request') || lowerCheck.includes('state mutation')) {
+            res = ExpressTransformers.applyIdempotencyProtection(workingContent);
+          } else if (lowerCheck.includes('header') || lowerCheck.includes('nosniff') || lowerCheck.includes('defensive')) {
             res = ExpressTransformers.applyDefensiveHeaders(workingContent);
           } else if (lowerCheck.includes('payload') || lowerCheck.includes('413') || lowerCheck.includes('oom')) {
             res = ExpressTransformers.applyPayloadLimit(workingContent);
@@ -143,7 +152,8 @@ export class AutoHealer {
       }
 
       if (res && res.modified) {
-        const patchId = `patch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const cleanKey = check.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        const patchId = `patch_${cleanKey}`;
         const diff = DiffGenerator.generateDiff(entryFile, workingContent, res.content);
 
         patches.push({
@@ -195,6 +205,7 @@ export class AutoHealer {
     // Run a fresh scan to generate latest patches
     const scanResult = await this.scan({
       projectDir: resolvedDir,
+      failedChecks: options.failedChecks,
       aiConfig: options.aiConfig,
       engineMode: options.engineMode,
     });
@@ -207,15 +218,26 @@ export class AutoHealer {
       };
     }
 
-    const patchesToApply = options.patchIds && options.patchIds.length > 0
-      ? scanResult.patches.filter(p => options.patchIds!.includes(p.id))
-      : scanResult.patches;
+    let patchesToApply = scanResult.patches;
+    if (options.patchIds && options.patchIds.length > 0) {
+      const filtered = scanResult.patches.filter(p =>
+        options.patchIds!.includes(p.id) ||
+        options.patchIds!.some(id =>
+          id.toLowerCase().includes(p.checkName.toLowerCase()) ||
+          p.id.toLowerCase().includes(id.toLowerCase())
+        )
+      );
+      if (filtered.length > 0) {
+        patchesToApply = filtered;
+      }
+    }
 
     if (patchesToApply.length === 0) {
       return {
         success: true,
         appliedCount: 0,
         appliedPatches: [],
+        errors: ['No patches matched criteria'],
       };
     }
 
@@ -360,8 +382,19 @@ export class AutoHealer {
           framework = 'generic-node';
         }
 
-        // Check package.json "main"
-        if (pkg.main && fs.existsSync(path.join(projectDir, pkg.main))) {
+        // If scanning FaultMesh workspace root itself, prioritize targeting the sample backend and prevent targeting FaultMesh runtime
+        if (pkg.name === 'faultmesh' || fs.existsSync(path.join(projectDir, 'examples', 'vulnerable-backend', 'server.js'))) {
+          if (fs.existsSync(path.join(projectDir, 'examples', 'vulnerable-backend', 'server.js'))) {
+            return { framework: 'express', entryFile: 'examples/vulnerable-backend/server.js', warnings };
+          }
+        }
+
+        // Check package.json "main" (excluding compiled build outputs like dist/)
+        const isBuildOutput = typeof pkg.main === 'string' && (
+          pkg.main.startsWith('dist/') || pkg.main.startsWith('build/') || pkg.main.startsWith('out/')
+        );
+
+        if (pkg.main && !isBuildOutput && fs.existsSync(path.join(projectDir, pkg.main))) {
           return { framework, entryFile: pkg.main, warnings };
         }
       } catch (err: any) {

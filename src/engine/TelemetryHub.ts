@@ -56,6 +56,10 @@ export class TelemetryHub {
     });
   }
 
+  public broadcastCustomEvent(eventType: string, data: any): void {
+    this.broadcastSSE(eventType, data);
+  }
+
   private broadcastSSE(eventType: string, data: any): void {
     const payload = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const client of this.sseClients) {

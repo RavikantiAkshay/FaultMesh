@@ -100,13 +100,22 @@ export class FaultMeshProxy {
 
     // 2. Prepare Upstream forwarding
     const targetUrl = new URL(req.url || '/', this.config.targetUrl);
+    const clientHost = req.headers['host'];
+    const forwardedHost = clientHost && !clientHost.includes('3001')
+      ? clientHost
+      : targetUrl.host;
+
     const options: http.RequestOptions = {
       protocol: targetUrl.protocol,
       hostname: targetUrl.hostname,
       port: targetUrl.port,
       path: targetUrl.pathname + targetUrl.search,
       method: req.method,
-      headers: { ...req.headers, host: targetUrl.host },
+      headers: {
+        ...req.headers,
+        host: forwardedHost,
+        'x-forwarded-host': clientHost || targetUrl.host,
+      },
     };
 
     const upstreamReq = http.request(options, async (upstreamRes) => {

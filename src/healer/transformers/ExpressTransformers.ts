@@ -34,7 +34,8 @@ export class ExpressTransformers {
     if (appMatch) {
       const appVar = appMatch[2];
       const targetStr = appMatch[0];
-      const injection = `${targetStr};\n${appVar}.use(helmet());`;
+      const cleanTarget = targetStr.replace(/;+$/, '');
+      const injection = `${cleanTarget};\n${appVar}.use(helmet());`;
       modifiedContent = modifiedContent.replace(targetStr, injection);
       return {
         modified: true,
@@ -188,5 +189,83 @@ ${appVar}.use((err, req, res, next) => {
     }
 
     return { modified: false, content, description: 'Could not locate HTTP server instance for timeout configuration' };
+  }
+
+  /**
+   * 6. Strict Host Header Whitelist Validation
+   */
+  static applyHostHeaderValidation(content: string): TransformerResult {
+    if (content.includes('allowedHosts') || content.includes('Host header validation guard') || content.includes('Blocked: Unrecognized or untrusted Host header')) {
+      return { modified: false, content, description: 'Host header whitelist validation already present' };
+    }
+
+    let modifiedContent = content;
+    const appMatch = modifiedContent.match(/([a-zA-Z0-9_$]+)\s*=\s*(express\s*\(\)|createApp\s*\(\))/);
+    if (appMatch) {
+      const appVar = appMatch[1];
+      const middleware = `\n// Host Header Whitelist Validation Guard\n${appVar}.use((req, res, next) => {\n  const rawHost = req.headers['host'] || req.headers['x-forwarded-host'] || '';\n  const host = String(Array.isArray(rawHost) ? rawHost[0] : rawHost).split(':')[0];\n  const allowedHosts = ['localhost', '127.0.0.1', '0.0.0.0'];\n  if (host && !allowedHosts.includes(host)) {\n    return res.status(400).json({ error: 'Blocked: Unrecognized or untrusted Host header' });\n  }\n  next();\n});\n`;
+      const appIndex = modifiedContent.indexOf(appMatch[0]);
+      const lineEnd = modifiedContent.indexOf('\n', appIndex);
+      modifiedContent = modifiedContent.slice(0, lineEnd + 1) + middleware + modifiedContent.slice(lineEnd + 1);
+      return {
+        modified: true,
+        content: modifiedContent,
+        description: `Injected strict Host header whitelist validation middleware into Express app (${appVar})`,
+      };
+    }
+
+    return { modified: false, content, description: 'Could not find Express app instance to inject host validation' };
+  }
+
+  /**
+   * 7. Path Traversal & Unsanitized Directory Escape Guard
+   */
+  static applyPathTraversalGuard(content: string): TransformerResult {
+    if (content.includes('Path Traversal Prohibited') || content.includes('directory traversal prohibited') || content.includes('pathTraversalGuard')) {
+      return { modified: false, content, description: 'Path traversal sanitization guard already present' };
+    }
+
+    let modifiedContent = content;
+    const appMatch = modifiedContent.match(/([a-zA-Z0-9_$]+)\s*=\s*(express\s*\(\)|createApp\s*\(\))/);
+    if (appMatch) {
+      const appVar = appMatch[1];
+      const middleware = `\n// Directory Path Traversal & Parameter Sanitization Guard\n${appVar}.use((req, res, next) => {\n  const rawUrl = decodeURIComponent(req.url || '');\n  if (rawUrl.includes('..') || rawUrl.includes('%2e%2e') || rawUrl.includes('%2E%2E')) {\n    return res.status(400).json({ error: 'Access Denied: Path Traversal Prohibited' });\n  }\n  next();\n});\n`;
+      const appIndex = modifiedContent.indexOf(appMatch[0]);
+      const lineEnd = modifiedContent.indexOf('\n', appIndex);
+      modifiedContent = modifiedContent.slice(0, lineEnd + 1) + middleware + modifiedContent.slice(lineEnd + 1);
+      return {
+        modified: true,
+        content: modifiedContent,
+        description: `Injected path traversal rejection middleware into Express app (${appVar})`,
+      };
+    }
+
+    return { modified: false, content, description: 'Could not find Express app instance to inject path traversal guard' };
+  }
+
+  /**
+   * 8. Duplicate Request Idempotency & Concurrency Race Protection
+   */
+  static applyIdempotencyProtection(content: string): TransformerResult {
+    if (content.includes('processedIdempotencyKeys') || content.includes('seenIdempotencyKeys') || content.includes('Duplicate transaction detected')) {
+      return { modified: false, content, description: 'Idempotency deduplication middleware already present' };
+    }
+
+    let modifiedContent = content;
+    const appMatch = modifiedContent.match(/([a-zA-Z0-9_$]+)\s*=\s*(express\s*\(\)|createApp\s*\(\))/);
+    if (appMatch) {
+      const appVar = appMatch[1];
+      const middleware = `\n// Transactional Idempotency & Concurrency Race Guard\nconst processedIdempotencyKeys = new Set();\n${appVar}.use((req, res, next) => {\n  const idemKey = req.headers['idempotency-key'];\n  if (idemKey && ['POST', 'PUT', 'PATCH'].includes(req.method)) {\n    if (processedIdempotencyKeys.has(idemKey)) {\n      return res.status(409).json({ error: 'Conflict: Duplicate transaction detected for Idempotency-Key' });\n    }\n    processedIdempotencyKeys.add(idemKey);\n    if (processedIdempotencyKeys.size > 1000) {\n      const first = processedIdempotencyKeys.values().next().value;\n      if (first) processedIdempotencyKeys.delete(first);\n    }\n  }\n  next();\n});\n`;
+      const appIndex = modifiedContent.indexOf(appMatch[0]);
+      const lineEnd = modifiedContent.indexOf('\n', appIndex);
+      modifiedContent = modifiedContent.slice(0, lineEnd + 1) + middleware + modifiedContent.slice(lineEnd + 1);
+      return {
+        modified: true,
+        content: modifiedContent,
+        description: `Injected duplicate request idempotency & race condition protection into Express app (${appVar})`,
+      };
+    }
+
+    return { modified: false, content, description: 'Could not find Express app instance to inject idempotency protection' };
   }
 }

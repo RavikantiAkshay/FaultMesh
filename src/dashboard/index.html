@@ -19,8 +19,12 @@
       <div class="header-right">
         <div class="target-url-control">
           <label for="targetUrlInput" class="target-label">Target API:</label>
-          <input type="text" id="targetUrlInput" class="input-target-url" value="http://127.0.0.1:4000" placeholder="http://localhost:8000" spellcheck="false" title="Target backend URL to audit and proxy">
-          <button id="btnSetTargetUrl" class="btn-target-apply" type="button" title="Switch the proxy target backend">Set Target</button>
+          <input type="text" id="targetUrlInput" class="input-target-url" value="http://127.0.0.1:5050" placeholder="http://localhost:8000" spellcheck="false" title="Target backend URL to audit and proxy">
+          <button id="btnSetTargetUrl" class="btn-target-apply" type="button" title="Switch the proxy target backend">Set</button>
+          <div class="target-quick-pills" style="display: flex; gap: 3px; margin-left: 4px;">
+            <button id="btnTarget5050" class="btn-text btn-sm" style="font-size: 10px; font-family: var(--font-mono); padding: 2px 5px; border: 1px solid var(--border-default); border-radius: 3px;" type="button" title="Target real Express vulnerable backend with source code">:5050 (Sample App)</button>
+            <button id="btnTarget4000" class="btn-text btn-sm" style="font-size: 10px; font-family: var(--font-mono); padding: 2px 5px; border: 1px solid var(--border-default); border-radius: 3px;" type="button" title="Target internal mock echo server">:4000 (Mock Echo)</button>
+          </div>
         </div>
         <span class="proxy-status">Proxy: <strong>:3001</strong></span>
         <button id="themeToggle" class="btn-text">Switch Theme</button>
@@ -50,45 +54,207 @@
           <button id="tabResilience" class="diag-tab active" type="button">Network Resilience (10 Checks)</button>
           <button id="tabSecurity" class="diag-tab" type="button">Security &amp; Protocol (14 Checks)</button>
           <button id="tabStorm" class="diag-tab" type="button">Traffic Storms &amp; DoS (8 Checks)</button>
+          <button id="tabRedTeam" class="diag-tab diag-tab-redteam" type="button">Red Chaos Team (ECC)</button>
         </div>
       </div>
 
-      <!-- Audit Banner: Score Summary & Action Runner -->
-      <div class="audit-banner">
-        <div class="score-summary">
-          <div class="score-pill">
-            <span id="scoreValue" class="score-number">--</span>
-            <span id="scoreGrade" class="score-label">UNTESTED</span>
+      <!-- Standard 32-Check Audit Panel (Resilience, Security, Traffic Storm) -->
+      <div id="standardAuditPanel">
+        <!-- Audit Banner: Score Summary & Action Runner -->
+        <div class="audit-banner">
+          <div class="score-summary">
+            <div class="score-pill">
+              <span id="scoreValue" class="score-number">--</span>
+              <span id="scoreGrade" class="score-label">UNTESTED</span>
+            </div>
+            <div class="score-text">
+              <strong id="scoreTitle">Ready to evaluate</strong>
+              <p id="scoreSubtitle">Select a target profile and click "Run Benchmark" to execute the 10 resilience checks below.</p>
+            </div>
           </div>
-          <div class="score-text">
-            <strong id="scoreTitle">Ready to evaluate</strong>
-            <p id="scoreSubtitle">Select a target profile and click "Run Benchmark" to execute the 10 resilience checks below.</p>
+
+          <div class="diagnostics-actions">
+            <div class="export-btn-group" id="exportGroup" style="display: none;">
+              <button id="btnOpenHealer" class="btn-secondary btn-healer-trigger" type="button" title="Scan and automatically heal backend source code">Auto-Heal Codebase</button>
+              <button id="btnExportMd" class="btn-secondary btn-export" type="button" title="Download formatted Markdown scorecard">Export Markdown</button>
+              <button id="btnExportJson" class="btn-secondary btn-export" type="button" title="Download raw JSON scorecard">Export JSON</button>
+            </div>
+            <select id="testTargetProfile" class="form-input select-profile" title="Target App Profile">
+              <option value="resilient">Target: Resilient App (Grade A)</option>
+              <option value="fragile">Target: Fragile App (Grade F)</option>
+            </select>
+            <button id="btnRunDiagnostics" class="btn-primary btn-run-diagnostics">Run 10-Point Resilience Benchmark</button>
           </div>
         </div>
 
-        <div class="diagnostics-actions">
-          <div class="export-btn-group" id="exportGroup" style="display: none;">
-            <button id="btnOpenHealer" class="btn-secondary btn-healer-trigger" type="button" title="Scan and automatically heal backend source code">Auto-Heal Codebase</button>
-            <button id="btnExportMd" class="btn-secondary btn-export" type="button" title="Download formatted Markdown scorecard">Export Markdown</button>
-            <button id="btnExportJson" class="btn-secondary btn-export" type="button" title="Download raw JSON scorecard">Export JSON</button>
+        <!-- Test Checklist & Results Area (Informs all checks upfront!) -->
+        <div class="checklist-container">
+          <div class="checklist-header">
+            <span class="checklist-title">Verification Criteria</span>
+            <span id="checklistCountTag" class="count-tag">5 checks ready</span>
           </div>
-          <select id="testTargetProfile" class="form-input select-profile" title="Target App Profile">
-            <option value="resilient">Target: Resilient App (Grade A)</option>
-            <option value="fragile">Target: Fragile App (Grade F)</option>
-          </select>
-          <button id="btnRunDiagnostics" class="btn-primary btn-run-diagnostics">Run 10-Point Resilience Benchmark</button>
+
+          <div id="diagnosticsResults" class="test-results-list">
+            <!-- Populated by JS upfront and updated on run -->
+          </div>
         </div>
       </div>
 
-      <!-- Test Checklist & Results Area (Informs all checks upfront!) -->
-      <div class="checklist-container">
-        <div class="checklist-header">
-          <span class="checklist-title">Verification Criteria</span>
-          <span id="checklistCountTag" class="count-tag">5 checks ready</span>
+      <!-- Autonomous Red Chaos Team Engine Panel (Powered by ECC) -->
+      <div id="redTeamPanel" class="redteam-panel" style="display: none;">
+        <!-- 1. ECC Squadron Persona Badges -->
+        <div class="redteam-squadron-header">
+          <div class="squadron-title-group">
+            <span class="squadron-badge">AGENTIC SQUADRON</span>
+            <h4>Enterprise Claude Code (ECC) Agent Personas</h4>
+          </div>
+          <span class="squadron-status-tag">5 Active Personas Armed</span>
         </div>
 
-        <div id="diagnosticsResults" class="test-results-list">
-          <!-- Populated by JS upfront and updated on run -->
+        <div id="redTeamPersonasGrid" class="redteam-personas-grid">
+          <div class="persona-card" data-persona="security-reviewer">
+            <div class="persona-top">
+              <span class="persona-callsign">VULN-HUNTER</span>
+              <span class="persona-role-tag">Security</span>
+            </div>
+            <strong class="persona-name">Security Reviewer</strong>
+            <p class="persona-desc">Probes host poisoning, IP spoofing, path traversal, broken auth crashes, and secret leakage.</p>
+          </div>
+          <div class="persona-card" data-persona="silent-failure-hunter">
+            <div class="persona-top">
+              <span class="persona-callsign">SILENT-TRAPPER</span>
+              <span class="persona-role-tag">Silent Failure</span>
+            </div>
+            <strong class="persona-name">Silent Failure Hunter</strong>
+            <p class="persona-desc">Detects swallowed exceptions, truncated JSON streams, and unhandled socket drops.</p>
+          </div>
+          <div class="persona-card" data-persona="performance-optimizer">
+            <div class="persona-top">
+              <span class="persona-callsign">SURGE-STORMER</span>
+              <span class="persona-role-tag">Performance</span>
+            </div>
+            <strong class="persona-name">Performance Optimizer</strong>
+            <p class="persona-desc">Dispatches slowloris drips, 1.5MB buffer overflows, and avalanche concurrency bursts.</p>
+          </div>
+          <div class="persona-card" data-persona="gan-adversary">
+            <div class="persona-top">
+              <span class="persona-callsign">MUTANT-PROBER</span>
+              <span class="persona-role-tag">Adversarial GAN</span>
+            </div>
+            <strong class="persona-name">Adversarial GAN Mutant</strong>
+            <p class="persona-desc">Fires catastrophic ReDoS backtracking probes and transactional duplicate race conditions.</p>
+          </div>
+          <div class="persona-card" data-persona="network-troubleshooter">
+            <div class="persona-top">
+              <span class="persona-callsign">NET-FRACTURER</span>
+              <span class="persona-role-tag">Transport</span>
+            </div>
+            <strong class="persona-name">Network Troubleshooter</strong>
+            <p class="persona-desc">Injects latency jitter spikes (&plusmn;250ms), 16 kbps bandwidth caps, and gateway timeout hangs.</p>
+          </div>
+        </div>
+
+        <!-- 2. Campaign Mission Control Bar -->
+        <div class="redteam-control-bar">
+          <div class="redteam-config-group">
+            <label for="redTeamIntensitySelect">Assault Intensity:</label>
+            <select id="redTeamIntensitySelect" class="form-input redteam-select">
+              <option value="sustained" selected>Sustained Assault (5 Coordinated Waves - Recommended)</option>
+              <option value="stealth">Stealth Reconnaissance (Targeted Probes, Low Concurrency)</option>
+              <option value="avalanche">Chaos Avalanche (Aggressive Multi-Threaded Stress)</option>
+            </select>
+          </div>
+
+          <div class="redteam-btn-group">
+            <button id="btnLaunchRedTeam" class="btn-primary btn-redteam-launch" type="button">Launch Red Team Assault</button>
+            <button id="btnAbortRedTeam" class="btn-danger-outline btn-redteam-abort" type="button" style="display: none;">Abort Mission</button>
+          </div>
+        </div>
+
+        <!-- 3. Real-time Tactical Assault HUD -->
+        <div id="redTeamHud" class="redteam-hud" style="display: none;">
+          <!-- 5-Phase Breadcrumb Pipeline -->
+          <div class="redteam-phase-pipeline">
+            <div class="phase-step" data-phase="recon"><span class="phase-dot"></span> 1. Recon</div>
+            <div class="phase-step" data-phase="weaponize"><span class="phase-dot"></span> 2. Weaponize</div>
+            <div class="phase-step" data-phase="assault"><span class="phase-dot"></span> 3. Compound Assault</div>
+            <div class="phase-step" data-phase="debrief"><span class="phase-dot"></span> 4. Blast Radius</div>
+            <div class="phase-step" data-phase="complete"><span class="phase-dot"></span> 5. Mission Debrief</div>
+          </div>
+
+          <!-- Progress Bar & Wave Subtitle -->
+          <div class="redteam-progress-bar-wrapper">
+            <div class="redteam-progress-info">
+              <strong id="redTeamCurrentWaveText">Standby...</strong>
+              <span id="redTeamProgressPercent">0%</span>
+            </div>
+            <div class="redteam-track">
+              <div id="redTeamProgressBar" class="redteam-bar" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Telemetry Counters Bar -->
+          <div class="redteam-telemetry-strip">
+            <div class="telemetry-pill">
+              <span class="telemetry-label">Probes Sent:</span>
+              <span id="redTeamProbesCount" class="telemetry-val">0</span>
+            </div>
+            <div class="telemetry-pill pill-critical">
+              <span class="telemetry-label">Critical Breaches:</span>
+              <span id="redTeamCritCount" class="telemetry-val">0</span>
+            </div>
+            <div class="telemetry-pill pill-high">
+              <span class="telemetry-label">High Breaches:</span>
+              <span id="redTeamHighCount" class="telemetry-val">0</span>
+            </div>
+            <div class="telemetry-pill">
+              <span class="telemetry-label">Medium Breaches:</span>
+              <span id="redTeamMedCount" class="telemetry-val">0</span>
+            </div>
+          </div>
+
+          <!-- Live Tactical Monospace Console Log -->
+          <div class="redteam-console-wrapper">
+            <div class="console-header">
+              <span>LIVE TACTICAL TELEMETRY STREAM</span>
+              <span id="redTeamActivePersonaPill" class="active-persona-pill">Awaiting Launch</span>
+            </div>
+            <div id="redTeamConsoleLogs" class="redteam-terminal-log">
+              <div class="terminal-line text-muted">&gt; Red Chaos Team Engine standby. Ready to deploy ECC agent personas against target.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Post-Campaign Mission Debrief Dossier -->
+        <div id="redTeamDossier" class="redteam-dossier" style="display: none;">
+          <div class="dossier-header-bar">
+            <div class="dossier-score-badge">
+              <span id="dossierScoreVal" class="dossier-score-num">--</span>
+              <span id="dossierGradeVal" class="dossier-grade-tag">GRADE --</span>
+            </div>
+            <div class="dossier-summary-col">
+              <h3 id="dossierTitle">Mission Debrief: Target Evaluated</h3>
+              <p id="dossierSummaryText">Campaign concluded. Review discovered vulnerabilities and system blast radius below.</p>
+            </div>
+            <div class="dossier-action-col">
+              <button id="btnAutoHealBreaches" class="btn-primary btn-autoheal-breaches" type="button" title="Open Auto-Healer to repair all discovered breaches">Auto-Heal Discovered Breaches</button>
+              <div class="dossier-export-group">
+                <button id="btnExportDossierMd" class="btn-secondary btn-sm" type="button">Export Markdown</button>
+                <button id="btnExportDossierJson" class="btn-secondary btn-sm" type="button">Export JSON</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Breaches Findings List -->
+          <div class="dossier-findings-section">
+            <div class="findings-header">
+              <span class="findings-title">Discovered Breaches &amp; Exploit Proofs</span>
+              <span id="dossierFindingsCount" class="count-tag">0 breaches</span>
+            </div>
+            <div id="dossierFindingsList" class="dossier-findings-list">
+              <!-- Populated by JS -->
+            </div>
+          </div>
         </div>
       </div>
 
@@ -344,10 +510,18 @@
         </p>
 
         <div class="healer-config-row">
-          <label for="healerProjectDir">Backend Project Directory:</label>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label for="healerProjectDir">Target Service / Backend Directory:</label>
+            <span class="healer-dir-hint" style="font-size: 11px; color: var(--text-muted);">Default: <code>examples/vulnerable-backend</code></span>
+          </div>
           <div class="healer-input-group">
-            <input type="text" id="healerProjectDir" class="form-input" value="./examples/vulnerable-backend" placeholder="e.g. ./ or ./src" spellcheck="false">
+            <input type="text" id="healerProjectDir" class="form-input" value="examples/vulnerable-backend" placeholder="e.g. examples/vulnerable-backend or ./backend" spellcheck="false">
             <button id="btnHealerScan" class="btn-primary" type="button">Scan Codebase</button>
+          </div>
+          <div class="healer-presets-pills" style="display: flex; gap: 8px; margin-top: 2px;">
+            <button type="button" class="btn-text btn-dir-preset" id="btnDirPresetSample" style="font-size: 11px; text-decoration: underline; padding: 0;">Target Sample Backend (examples/vulnerable-backend)</button>
+            <span style="color: var(--text-subtle);">|</span>
+            <button type="button" class="btn-text btn-dir-preset" id="btnDirPresetRoot" style="font-size: 11px; text-decoration: underline; padding: 0;">Custom Path</button>
           </div>
         </div>
 
@@ -398,6 +572,7 @@
           </label>
           <div class="healer-btn-group">
             <button id="btnHealerApply" class="btn-primary" type="button">Apply Remedies to Codebase</button>
+            <button id="btnHealerResetSample" class="btn-secondary" type="button" title="Restore sample backend to its unhealed state to test auto-healing again">Reset Sample to Vulnerable</button>
             <button id="btnHealerRollback" class="btn-secondary" type="button" style="display: none;">Rollback Last Patch</button>
           </div>
         </div>

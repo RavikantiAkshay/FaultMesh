@@ -11,6 +11,8 @@ import { TrafficStormAuditor } from '../scorer/TrafficStormAuditor.js';
 import { FaultMeshProxy } from './FaultMeshProxy.js';
 import { ToxicRule } from '../types.js';
 import { AutoHealer } from '../healer/AutoHealer.js';
+import { EccAgentBridge } from '../redteam/EccAgentBridge.js';
+import { RedTeamEngine } from '../redteam/RedTeamEngine.js';
 
 export class ControlApi {
   private server: http.Server;
@@ -22,6 +24,8 @@ export class ControlApi {
   private trafficStormAuditor: TrafficStormAuditor;
   private dashboardDir: string;
   private proxy?: FaultMeshProxy;
+  private eccBridge: EccAgentBridge;
+  private redTeamEngine: RedTeamEngine;
   private isRunning = false;
 
   constructor(
@@ -32,7 +36,9 @@ export class ControlApi {
     securityAuditor?: SecurityAuditor,
     trafficStormAuditor?: TrafficStormAuditor,
     dashboardDir?: string,
-    proxy?: FaultMeshProxy
+    proxy?: FaultMeshProxy,
+    redTeamEngine?: RedTeamEngine,
+    eccBridge?: EccAgentBridge
   ) {
     this.port = port;
     this.pipeline = pipeline;
@@ -41,6 +47,8 @@ export class ControlApi {
     this.securityAuditor = securityAuditor || new SecurityAuditor('http://127.0.0.1:3001');
     this.trafficStormAuditor = trafficStormAuditor || new TrafficStormAuditor('http://127.0.0.1:3001');
     this.proxy = proxy;
+    this.eccBridge = eccBridge || new EccAgentBridge();
+    this.redTeamEngine = redTeamEngine || new RedTeamEngine(this.pipeline, this.telemetryHub, this.eccBridge);
 
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
     let resolvedDir = dashboardDir || path.resolve(currentDir, '../dashboard');
@@ -278,15 +286,25 @@ export class ControlApi {
         const body = raw ? JSON.parse(raw) : {};
         const projectDir = body.projectDir || '.';
         const patchIds = body.patchIds;
+        const failedChecks = body.failedChecks;
         const createBackup = body.createBackup !== false;
         const aiConfig = body.aiConfig;
         const engineMode = body.engineMode;
 
-        const applyResult = await AutoHealer.apply({ projectDir, patchIds, createBackup, aiConfig, engineMode });
+        const applyResult = await AutoHealer.apply({ projectDir, patchIds, failedChecks, createBackup, aiConfig, engineMode });
 
-        // If healing the sample backend, automatically restart it so memory updates immediately
+        // If healing the sample backend, automatically restart it so memory updates immediately and switch proxy target
         if (applyResult.success && projectDir.includes('vulnerable-backend')) {
           await this.restartSampleBackend();
+          if (this.proxy) {
+            this.proxy.setTargetUrl('http://127.0.0.1:5050');
+          }
+          if (this.securityAuditor) {
+            this.securityAuditor.setTargetUrl('http://127.0.0.1:5050');
+          }
+          if (this.trafficStormAuditor) {
+            this.trafficStormAuditor.setTargetUrl('http://127.0.0.1:5050');
+          }
         }
 
         this.json(res, 200, applyResult);
@@ -328,6 +346,77 @@ export class ControlApi {
       return;
     }
 
+    if (pathname === '/_faultmesh/sample/reset' && req.method === 'POST') {
+      try {
+        const baselinePath = path.resolve(process.cwd(), 'examples/vulnerable-backend/baseline-vulnerable.js');
+        const targetPath = path.resolve(process.cwd(), 'examples/vulnerable-backend/server.js');
+        if (fs.existsSync(baselinePath)) {
+          fs.copyFileSync(baselinePath, targetPath);
+        }
+        await this.restartSampleBackend();
+        if (this.proxy) {
+          this.proxy.setTargetUrl('http://127.0.0.1:5050');
+        }
+        this.json(res, 200, { success: true, message: 'Sample backend restored to baseline vulnerable state on port 5050' });
+      } catch (err: any) {
+        this.json(res, 500, { error: 'Failed to reset sample backend', details: err.message });
+      }
+      return;
+    }
+
+    // 8.8 Autonomous Red Chaos Team Engine (Powered by ECC)
+    if (pathname === '/_faultmesh/redteam/personas' && req.method === 'GET') {
+      try {
+        const personas = await this.eccBridge.getPersonas();
+        this.json(res, 200, { success: true, personas });
+      } catch (err: any) {
+        this.json(res, 500, { error: 'Failed to load ECC personas', details: err.message });
+      }
+      return;
+    }
+
+    if (pathname === '/_faultmesh/redteam/start' && req.method === 'POST') {
+      try {
+        const raw = await this.readBody(req);
+        const options = raw ? JSON.parse(raw) : {};
+        if (options.targetUrl && options.targetUrl.includes(':5050')) {
+          if (this.proxy) {
+            this.proxy.setTargetUrl('http://127.0.0.1:5050');
+          }
+        }
+        if (!options.targetUrl || options.targetUrl.includes(':4000') || options.targetUrl.includes(':5050')) {
+          options.targetUrl = 'http://127.0.0.1:3001';
+        }
+        // Start campaign asynchronously in background
+        const campaignPromise = this.redTeamEngine.startCampaign(options);
+        campaignPromise.catch(err => {
+          console.error('Red Team background campaign error:', err.message);
+        });
+        const initialStatus = this.redTeamEngine.getStatus();
+        this.json(res, 202, { success: true, message: 'Red Team campaign initiated', status: initialStatus });
+      } catch (err: any) {
+        this.json(res, 400, { error: 'Failed to start Red Team campaign', details: err.message });
+      }
+      return;
+    }
+
+    if (pathname === '/_faultmesh/redteam/abort' && req.method === 'POST') {
+      const result = this.redTeamEngine.abortCampaign();
+      this.json(res, 200, result);
+      return;
+    }
+
+    if (pathname === '/_faultmesh/redteam/status' && req.method === 'GET') {
+      this.json(res, 200, this.redTeamEngine.getStatus());
+      return;
+    }
+
+    if (pathname === '/_faultmesh/redteam/report' && req.method === 'GET') {
+      const report = this.redTeamEngine.getReport();
+      this.json(res, 200, report || { message: 'No campaign report recorded yet' });
+      return;
+    }
+
     // 9. Static Dashboard Serving
     if (req.method === 'GET') {
       this.serveStatic(pathname, res);
@@ -339,6 +428,14 @@ export class ControlApi {
 
   setProxy(proxy: FaultMeshProxy): void {
     this.proxy = proxy;
+  }
+
+  getRedTeamEngine(): RedTeamEngine {
+    return this.redTeamEngine;
+  }
+
+  getEccBridge(): EccAgentBridge {
+    return this.eccBridge;
   }
 
   private serveStatic(pathname: string, res: ServerResponse): void {

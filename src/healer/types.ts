@@ -63,6 +63,7 @@ export interface HealScanResult {
 export interface HealApplyOptions {
   projectDir: string;
   patchIds?: string[];
+  failedChecks?: string[];
   createBackup?: boolean;
   aiConfig?: AiProviderConfig;
   engineMode?: 'codemod' | 'ai' | 'hybrid';

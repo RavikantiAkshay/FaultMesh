@@ -81,6 +81,38 @@ document.addEventListener('DOMContentLoaded', () => {
   const activityFeed = document.getElementById('activityFeed');
   const btnClearLog = document.getElementById('btnClearLog');
 
+  // Red Team Tactical Console Elements
+  const tabRedTeam = document.getElementById('tabRedTeam');
+  const standardAuditPanel = document.getElementById('standardAuditPanel');
+  const redTeamPanel = document.getElementById('redTeamPanel');
+  const redTeamPersonasGrid = document.getElementById('redTeamPersonasGrid');
+  const redTeamIntensitySelect = document.getElementById('redTeamIntensitySelect');
+  const btnLaunchRedTeam = document.getElementById('btnLaunchRedTeam');
+  const btnAbortRedTeam = document.getElementById('btnAbortRedTeam');
+  const redTeamHud = document.getElementById('redTeamHud');
+  const redTeamCurrentWaveText = document.getElementById('redTeamCurrentWaveText');
+  const redTeamProgressPercent = document.getElementById('redTeamProgressPercent');
+  const redTeamProgressBar = document.getElementById('redTeamProgressBar');
+  const redTeamProbesCount = document.getElementById('redTeamProbesCount');
+  const redTeamCritCount = document.getElementById('redTeamCritCount');
+  const redTeamHighCount = document.getElementById('redTeamHighCount');
+  const redTeamMedCount = document.getElementById('redTeamMedCount');
+  const redTeamActivePersonaPill = document.getElementById('redTeamActivePersonaPill');
+  const redTeamConsoleLogs = document.getElementById('redTeamConsoleLogs');
+  const redTeamDossier = document.getElementById('redTeamDossier');
+  const dossierScoreVal = document.getElementById('dossierScoreVal');
+  const dossierGradeVal = document.getElementById('dossierGradeVal');
+  const dossierTitle = document.getElementById('dossierTitle');
+  const dossierSummaryText = document.getElementById('dossierSummaryText');
+  const dossierFindingsCount = document.getElementById('dossierFindingsCount');
+  const dossierFindingsList = document.getElementById('dossierFindingsList');
+  const btnAutoHealBreaches = document.getElementById('btnAutoHealBreaches');
+  const btnExportDossierMd = document.getElementById('btnExportDossierMd');
+  const btnExportDossierJson = document.getElementById('btnExportDossierJson');
+
+  let lastRedTeamReport = null;
+  let redTeamPollingInterval = null;
+
   let lastHealerScanResult = null;
   let lastBackupDir = null;
 
@@ -927,7 +959,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (tabResilience) tabResilience.classList.remove('active');
     if (tabSecurity) tabSecurity.classList.remove('active');
     if (tabStorm) tabStorm.classList.remove('active');
+    if (tabRedTeam) tabRedTeam.classList.remove('active');
     if (exportGroup) exportGroup.style.display = 'none';
+
+    if (mode === 'redteam') {
+      if (tabRedTeam) tabRedTeam.classList.add('active');
+      if (standardAuditPanel) standardAuditPanel.style.display = 'none';
+      if (redTeamPanel) redTeamPanel.style.display = 'flex';
+      if (diagHeaderTitle) diagHeaderTitle.textContent = 'Autonomous Red Chaos Team Engine (Powered by ECC)';
+      if (diagHeaderSubtitle) diagHeaderSubtitle.textContent = 'Deploy autonomous ECC agent personas armed with multi-wave fuzzing, compound network fault injections, and system survivability scoring.';
+      loadRedTeamPersonas();
+      refreshRedTeamStatus();
+      return;
+    }
+
+    if (standardAuditPanel) standardAuditPanel.style.display = 'block';
+    if (redTeamPanel) redTeamPanel.style.display = 'none';
 
     if (mode === 'storm') {
       if (tabStorm) tabStorm.classList.add('active');
@@ -977,6 +1024,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (tabResilience) tabResilience.addEventListener('click', () => setDiagMode('resilience'));
   if (tabSecurity) tabSecurity.addEventListener('click', () => setDiagMode('security'));
   if (tabStorm) tabStorm.addEventListener('click', () => setDiagMode('storm'));
+  if (tabRedTeam) tabRedTeam.addEventListener('click', () => setDiagMode('redteam'));
 
   if (testTargetProfile) {
     testTargetProfile.addEventListener('change', () => {
@@ -1728,6 +1776,9 @@ async def checkout(idempotency_key: str = Header(None)):
   // 8.9 Auto-Healer Interactions
   if (btnOpenHealer && healerModal) {
     btnOpenHealer.addEventListener('click', () => {
+      if (healerProjectDir && (!healerProjectDir.value || healerProjectDir.value === '.' || healerProjectDir.value === './')) {
+        healerProjectDir.value = 'examples/vulnerable-backend';
+      }
       healerModal.style.display = 'flex';
       if (healerScanStatus && healerScanStatus.style.display === 'none') {
         healerScanStatus.style.display = 'block';
@@ -1748,6 +1799,61 @@ async def checkout(idempotency_key: str = Header(None)):
       if (e.target === healerModal) {
         healerModal.style.display = 'none';
       }
+    });
+  }
+
+  const btnDirPresetSample = document.getElementById('btnDirPresetSample');
+  const btnDirPresetRoot = document.getElementById('btnDirPresetRoot');
+  if (btnDirPresetSample && healerProjectDir) {
+    btnDirPresetSample.addEventListener('click', () => {
+      healerProjectDir.value = 'examples/vulnerable-backend';
+      if (btnHealerScan) btnHealerScan.click();
+    });
+  }
+  if (btnDirPresetRoot && healerProjectDir) {
+    btnDirPresetRoot.addEventListener('click', () => {
+      healerProjectDir.value = './';
+      healerProjectDir.focus();
+    });
+  }
+
+  // Target URL Management (Header Switchers)
+  const btnTarget5050 = document.getElementById('btnTarget5050');
+  const btnTarget4000 = document.getElementById('btnTarget4000');
+
+  async function applyTargetUrl(url) {
+    if (!url) return;
+    try {
+      const res = await fetch('/_faultmesh/config/target', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUrl: url }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (targetUrlInput) targetUrlInput.value = url;
+        if (testTargetProfile) {
+          testTargetProfile.textContent = url.includes(':5050') ? 'Sample Backend (:5050)' : (url.includes(':4000') ? 'Mock Echo (:4000)' : url);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to update target URL:', err);
+    }
+  }
+
+  if (btnSetTargetUrl && targetUrlInput) {
+    btnSetTargetUrl.addEventListener('click', () => {
+      applyTargetUrl(targetUrlInput.value.trim());
+    });
+  }
+  if (btnTarget5050) {
+    btnTarget5050.addEventListener('click', () => {
+      applyTargetUrl('http://127.0.0.1:5050');
+    });
+  }
+  if (btnTarget4000) {
+    btnTarget4000.addEventListener('click', () => {
+      applyTargetUrl('http://127.0.0.1:4000');
     });
   }
 
@@ -1809,7 +1915,12 @@ async def checkout(idempotency_key: str = Header(None)):
 
   if (btnHealerScan) {
     btnHealerScan.addEventListener('click', async () => {
-      const projectDir = (healerProjectDir ? healerProjectDir.value.trim() : '') || '.';
+      let rawDir = healerProjectDir ? healerProjectDir.value.trim() : '';
+      if (!rawDir || rawDir === '.' || rawDir === './') {
+        rawDir = 'examples/vulnerable-backend';
+        if (healerProjectDir) healerProjectDir.value = rawDir;
+      }
+      const projectDir = rawDir;
       const { engineMode, aiConfig } = getAiConfigPayload();
 
       btnHealerScan.disabled = true;
@@ -1822,7 +1933,11 @@ async def checkout(idempotency_key: str = Header(None)):
       if (healerActionsBar) healerActionsBar.style.display = 'none';
 
       let failedChecks = [];
-      if (lastScorecardData && lastScorecardData.report) {
+      if (lastRedTeamReport && lastRedTeamReport.breachesFound && lastRedTeamReport.breachesFound.length > 0) {
+        failedChecks = Array.from(new Set(
+          lastRedTeamReport.breachesFound.map(b => b.autoHealCheckKey || b.category || b.title).filter(Boolean)
+        ));
+      } else if (lastScorecardData && lastScorecardData.report) {
         const checks = lastScorecardData.report.checks || lastScorecardData.report.results || [];
         failedChecks = checks.filter(c => !c.passed).map(c => c.name);
       }
@@ -1846,8 +1961,20 @@ async def checkout(idempotency_key: str = Header(None)):
 
         if (result.patches.length === 0) {
           if (healerScanStatus) {
-            healerScanStatus.textContent = `Framework: ${result.framework.toUpperCase()} (Entry: ${result.entryFile}). All target defenses are already in place! Zero patches required.`;
+            healerScanStatus.innerHTML = `
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <div><strong>Framework:</strong> ${escapeHtml(result.framework.toUpperCase())} (Entry: <code>${escapeHtml(result.entryFile)}</code>). All target defenses are already in place! Zero patches required.</div>
+                <div style="font-size: 11px; color: var(--text-muted);">The backend codebase already has defensive headers, payload size limits, CORS restrictions, error sanitizers, socket timeouts, host whitelist guards, path traversal guards, and idempotency protection applied.</div>
+                <div>
+                  <button id="btnQuickResetVulnerable" class="btn-secondary btn-sm" type="button" style="margin-top: 4px; font-weight: 600;">Reset Sample Backend to Vulnerable State (To Test Healing Again)</button>
+                </div>
+              </div>
+            `;
             healerScanStatus.style.borderColor = 'var(--tag-green-fg)';
+            const quickReset = document.getElementById('btnQuickResetVulnerable');
+            if (quickReset && btnHealerResetSample) {
+              quickReset.addEventListener('click', () => btnHealerResetSample.click());
+            }
           }
           return;
         }
@@ -1911,9 +2038,26 @@ async def checkout(idempotency_key: str = Header(None)):
   if (btnHealerApply) {
     btnHealerApply.addEventListener('click', async () => {
       if (!lastHealerScanResult || !lastHealerScanResult.patches) return;
-      const projectDir = (healerProjectDir ? healerProjectDir.value.trim() : '') || '.';
+      let rawDir = healerProjectDir ? healerProjectDir.value.trim() : '';
+      if (!rawDir || rawDir === '.' || rawDir === './') {
+        rawDir = 'examples/vulnerable-backend';
+        if (healerProjectDir) healerProjectDir.value = rawDir;
+      }
+      const projectDir = rawDir;
       const createBackup = healerBackupCheck ? healerBackupCheck.checked : true;
       const { engineMode, aiConfig } = getAiConfigPayload();
+
+      let failedChecks = [];
+      if (lastRedTeamReport && lastRedTeamReport.breachesFound && lastRedTeamReport.breachesFound.length > 0) {
+        failedChecks = Array.from(new Set(
+          lastRedTeamReport.breachesFound.map(b => b.autoHealCheckKey || b.category || b.title).filter(Boolean)
+        ));
+      } else if (lastScorecardData && lastScorecardData.report) {
+        const checks = lastScorecardData.report.checks || lastScorecardData.report.results || [];
+        failedChecks = checks.filter(c => !c.passed).map(c => c.name);
+      }
+
+      const patchIds = lastHealerScanResult.patches.map(p => p.id);
 
       btnHealerApply.disabled = true;
       btnHealerApply.textContent = 'Applying Remedies...';
@@ -1922,14 +2066,26 @@ async def checkout(idempotency_key: str = Header(None)):
         const res = await fetch('/_faultmesh/healer/apply', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectDir, createBackup, engineMode, aiConfig }),
+          body: JSON.stringify({ projectDir, patchIds, failedChecks, createBackup, engineMode, aiConfig }),
         });
         const result = await res.json();
 
         if (result.success) {
+          if (result.appliedCount === 0) {
+            if (healerScanStatus) {
+              healerScanStatus.innerHTML = `<div>Notice: Zero patches were applied to disk. ${(result.errors || []).join('; ')}</div>`;
+              healerScanStatus.style.borderColor = 'var(--tag-amber-fg)';
+            }
+            return;
+          }
+
           lastBackupDir = result.backupDir;
+          if (projectDir.includes('vulnerable-backend')) {
+            applyTargetUrl('http://127.0.0.1:5050');
+          }
+
           if (healerScanStatus) {
-            healerScanStatus.textContent = `Successfully applied ${result.appliedCount} remedies! Backend restarted on port 5050. Re-running live tests...`;
+            healerScanStatus.textContent = `Successfully applied ${result.appliedCount} remedies! Target switched to healed backend on http://127.0.0.1:5050. Re-running validation...`;
             healerScanStatus.style.borderColor = 'var(--tag-green-fg)';
           }
           if (healerDiffContainer) healerDiffContainer.style.display = 'none';
@@ -1941,10 +2097,13 @@ async def checkout(idempotency_key: str = Header(None)):
 
           // Trigger live re-test automatically
           setTimeout(() => {
-            if (btnRunDiagnostics) {
+            if (currentDiagMode === 'redteam') {
+              if (healerModal) healerModal.style.display = 'none';
+              startRedTeamCampaign();
+            } else if (btnRunDiagnostics) {
               btnRunDiagnostics.click();
             }
-          }, 600);
+          }, 800);
         } else {
           if (healerScanStatus) {
             healerScanStatus.textContent = `Apply Error: ${(result.errors || []).join('; ')}`;
@@ -2007,6 +2166,33 @@ async def checkout(idempotency_key: str = Header(None)):
     });
   }
 
+  const btnHealerResetSample = document.getElementById('btnHealerResetSample');
+  if (btnHealerResetSample) {
+    btnHealerResetSample.addEventListener('click', async () => {
+      btnHealerResetSample.disabled = true;
+      btnHealerResetSample.textContent = 'Resetting...';
+      try {
+        const res = await fetch('/_faultmesh/sample/reset', { method: 'POST' });
+        const data = await res.json();
+        applyTargetUrl('http://127.0.0.1:5050');
+        if (healerProjectDir) healerProjectDir.value = 'examples/vulnerable-backend';
+        if (healerScanStatus) {
+          healerScanStatus.style.display = 'block';
+          healerScanStatus.textContent = 'Sample backend reset to vulnerable baseline! Re-scanning...';
+          healerScanStatus.style.borderColor = 'var(--tag-amber-fg)';
+        }
+        setTimeout(() => {
+          if (btnHealerScan) btnHealerScan.click();
+        }, 500);
+      } catch (err) {
+        alert('Failed to reset sample backend: ' + err.message);
+      } finally {
+        btnHealerResetSample.disabled = false;
+        btnHealerResetSample.textContent = 'Reset Sample to Vulnerable';
+      }
+    });
+  }
+
   // 9. Live Request SSE Stream
   function setupSSE() {
     const eventSource = new EventSource('/_faultmesh/telemetry/stream');
@@ -2030,6 +2216,64 @@ async def checkout(idempotency_key: str = Header(None)):
         refreshStatus();
       } catch (err) {
         console.warn('Telemetry parse error', err);
+      }
+    });
+
+    eventSource.addEventListener('redteam-progress', (e) => {
+      try {
+        const status = JSON.parse(e.data);
+        updateRedTeamHud(status);
+      } catch (err) {
+        console.warn('Red team progress parse error', err);
+      }
+    });
+
+    eventSource.addEventListener('redteam-wave-start', (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        if (payload.wave) {
+          highlightActivePersona(payload.wave.personaId);
+        }
+        if (payload.status) {
+          updateRedTeamHud(payload.status);
+        }
+      } catch (err) {
+        console.warn('Red team wave start parse error', err);
+      }
+    });
+
+    eventSource.addEventListener('redteam-log', (e) => {
+      try {
+        const log = JSON.parse(e.data);
+        appendRedTeamLog(log);
+      } catch (err) {
+        console.warn('Red team log parse error', err);
+      }
+    });
+
+    eventSource.addEventListener('redteam-breach', (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        if (payload.status) {
+          updateRedTeamHud(payload.status);
+        }
+      } catch (err) {
+        console.warn('Red team breach parse error', err);
+      }
+    });
+
+    eventSource.addEventListener('redteam-complete', (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        if (payload.report) {
+          renderRedTeamDossier(payload.report);
+        }
+        if (payload.status) {
+          updateRedTeamHud(payload.status);
+        }
+        stopRedTeamPolling();
+      } catch (err) {
+        console.warn('Red team complete parse error', err);
       }
     });
   }
@@ -2065,6 +2309,391 @@ async def checkout(idempotency_key: str = Header(None)):
   btnClearLog.addEventListener('click', () => {
     activityFeed.innerHTML = '<tr><td colspan="5" class="table-empty">Log cleared. Listening for requests...</td></tr>';
   });
+
+  // =========================================================================
+  // AUTONOMOUS RED CHAOS TEAM ENGINE (ECC) CONTROLLER
+  // =========================================================================
+
+  async function loadRedTeamPersonas() {
+    if (!redTeamPersonasGrid) return;
+    try {
+      const res = await fetch('/_faultmesh/redteam/personas');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.personas && data.personas.length > 0) {
+        redTeamPersonasGrid.innerHTML = data.personas.map(p => `
+          <div class="persona-card" data-persona="${escapeHtml(p.id)}">
+            <div class="persona-top">
+              <span class="persona-callsign">${escapeHtml(p.callSign || 'AGENT')}</span>
+              <span class="persona-role-tag">${escapeHtml(p.specialty || 'Chaos')}</span>
+            </div>
+            <strong class="persona-name">${escapeHtml(p.name)}</strong>
+            <p class="persona-desc">${escapeHtml(p.description)}</p>
+          </div>
+        `).join('');
+      }
+    } catch (err) {
+      console.warn('Failed to load personas from bridge:', err);
+    }
+  }
+
+  async function refreshRedTeamStatus() {
+    try {
+      const res = await fetch('/_faultmesh/redteam/status');
+      if (!res.ok) return;
+      const status = await res.json();
+      if (status.active) {
+        if (redTeamHud) redTeamHud.style.display = 'flex';
+        if (redTeamDossier) redTeamDossier.style.display = 'none';
+        if (btnLaunchRedTeam) btnLaunchRedTeam.style.display = 'none';
+        if (btnAbortRedTeam) btnAbortRedTeam.style.display = 'inline-flex';
+        updateRedTeamHud(status);
+        startRedTeamPolling();
+      } else if (status.phase === 'complete') {
+        const repRes = await fetch('/_faultmesh/redteam/report');
+        if (repRes.ok) {
+          const report = await repRes.json();
+          if (report.campaignId) {
+            renderRedTeamDossier(report);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to check red team status:', err);
+    }
+  }
+
+  async function startRedTeamCampaign() {
+    if (!btnLaunchRedTeam) return;
+    const intensity = redTeamIntensitySelect ? redTeamIntensitySelect.value : 'sustained';
+    // Probes must route through the Chaos Proxy so wave toxics are actively engaged
+    const targetUrl = 'http://127.0.0.1:3001';
+
+    btnLaunchRedTeam.style.display = 'none';
+    if (btnAbortRedTeam) btnAbortRedTeam.style.display = 'inline-flex';
+    if (redTeamHud) redTeamHud.style.display = 'flex';
+    if (redTeamDossier) redTeamDossier.style.display = 'none';
+
+    seenLogKeys.clear();
+    if (redTeamConsoleLogs) {
+      redTeamConsoleLogs.innerHTML = '';
+      appendRedTeamLog({
+        timestamp: Date.now(),
+        waveNumber: 0,
+        persona: 'RED-COMMAND',
+        message: `Deploying ECC Red Chaos Team [${intensity.toUpperCase()} assault mode] against ${targetUrl}...`,
+        type: 'info',
+      });
+    }
+
+    try {
+      const res = await fetch('/_faultmesh/redteam/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intensity, targetUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert('Failed to launch Red Team: ' + (data.error || 'Server error'));
+        btnLaunchRedTeam.style.display = 'inline-flex';
+        if (btnAbortRedTeam) btnAbortRedTeam.style.display = 'none';
+        return;
+      }
+      if (data.status) {
+        updateRedTeamHud(data.status);
+      }
+      startRedTeamPolling();
+    } catch (err) {
+      alert('Network error launching Red Team: ' + err.message);
+      btnLaunchRedTeam.style.display = 'inline-flex';
+      if (btnAbortRedTeam) btnAbortRedTeam.style.display = 'none';
+    }
+  }
+
+  async function abortRedTeamCampaign() {
+    if (btnAbortRedTeam) {
+      btnAbortRedTeam.disabled = true;
+      btnAbortRedTeam.textContent = 'Aborting...';
+    }
+    try {
+      await fetch('/_faultmesh/redteam/abort', { method: 'POST' });
+      stopRedTeamPolling();
+      appendRedTeamLog({
+        timestamp: Date.now(),
+        waveNumber: 0,
+        persona: 'COMMAND-ABORT',
+        message: 'Abort requested. Neutralized assault waves and flushed toxic proxy pipeline.',
+        type: 'warn',
+      });
+    } catch (err) {
+      console.warn('Abort error:', err);
+    } finally {
+      if (btnAbortRedTeam) {
+        btnAbortRedTeam.style.display = 'none';
+        btnAbortRedTeam.disabled = false;
+        btnAbortRedTeam.textContent = 'Abort Mission';
+      }
+      if (btnLaunchRedTeam) btnLaunchRedTeam.style.display = 'inline-flex';
+    }
+  }
+
+  function startRedTeamPolling() {
+    if (redTeamPollingInterval) return;
+    redTeamPollingInterval = setInterval(async () => {
+      try {
+        const res = await fetch('/_faultmesh/redteam/status');
+        if (!res.ok) return;
+        const status = await res.json();
+        updateRedTeamHud(status);
+        if (!status.active) {
+          stopRedTeamPolling();
+          if (btnLaunchRedTeam) btnLaunchRedTeam.style.display = 'inline-flex';
+          if (btnAbortRedTeam) btnAbortRedTeam.style.display = 'none';
+          if (status.phase === 'complete') {
+            const repRes = await fetch('/_faultmesh/redteam/report');
+            if (repRes.ok) {
+              const rep = await repRes.json();
+              if (rep.campaignId) renderRedTeamDossier(rep);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Polling error:', err);
+      }
+    }, 1000);
+  }
+
+  function stopRedTeamPolling() {
+    if (redTeamPollingInterval) {
+      clearInterval(redTeamPollingInterval);
+      redTeamPollingInterval = null;
+    }
+  }
+
+  function updateRedTeamHud(status) {
+    if (!status) return;
+
+    if (redTeamProgressBar) {
+      redTeamProgressBar.style.width = `${status.progressPercent}%`;
+    }
+    if (redTeamProgressPercent) {
+      redTeamProgressPercent.textContent = `${status.progressPercent}%`;
+    }
+    if (redTeamCurrentWaveText) {
+      redTeamCurrentWaveText.textContent = status.currentWaveName || `Phase: ${status.phase}`;
+    }
+    if (redTeamActivePersonaPill) {
+      redTeamActivePersonaPill.textContent = status.activePersona ? `Active: ${status.activePersona}` : 'Standby';
+    }
+
+    if (redTeamProbesCount) redTeamProbesCount.textContent = status.probesSent;
+    if (status.breachesCount) {
+      if (redTeamCritCount) redTeamCritCount.textContent = status.breachesCount.critical;
+      if (redTeamHighCount) redTeamHighCount.textContent = status.breachesCount.high;
+      if (redTeamMedCount) redTeamMedCount.textContent = status.breachesCount.medium;
+    }
+
+    // Update phase step breadcrumbs
+    const steps = document.querySelectorAll('.phase-step');
+    const phaseOrder = ['recon', 'weaponize', 'assault', 'debrief', 'complete'];
+    const currentIdx = phaseOrder.indexOf(status.phase);
+
+    steps.forEach((step) => {
+      const p = step.getAttribute('data-phase');
+      const stepIdx = phaseOrder.indexOf(p);
+      step.classList.remove('active', 'completed');
+      if (stepIdx < currentIdx || status.phase === 'complete') {
+        step.classList.add('completed');
+      } else if (p === status.phase) {
+        step.classList.add('active');
+      }
+    });
+
+    if (status.latestLog && redTeamConsoleLogs) {
+      appendRedTeamLog(status.latestLog);
+    }
+  }
+
+  function highlightActivePersona(personaId) {
+    const cards = document.querySelectorAll('.persona-card');
+    cards.forEach(card => {
+      if (card.getAttribute('data-persona') === personaId) {
+        card.classList.add('persona-active');
+      } else {
+        card.classList.remove('persona-active');
+      }
+    });
+  }
+
+  const seenLogKeys = new Set();
+
+  function appendRedTeamLog(log) {
+    if (!redTeamConsoleLogs || !log || !log.message) return;
+    const logKey = `${log.timestamp || ''}_${log.waveNumber ?? ''}_${log.persona || ''}_${log.message}`;
+    if (seenLogKeys.has(logKey)) {
+      return;
+    }
+    seenLogKeys.add(logKey);
+    if (seenLogKeys.size > 200) {
+      const first = seenLogKeys.values().next().value;
+      if (first) seenLogKeys.delete(first);
+    }
+
+    const time = new Date(log.timestamp || Date.now()).toTimeString().split(' ')[0];
+    const line = document.createElement('div');
+    line.className = `terminal-line log-${log.type || 'info'}`;
+    line.textContent = `[${time}] [${log.persona || 'RED-TEAM'}] ${log.message}`;
+
+    redTeamConsoleLogs.appendChild(line);
+    while (redTeamConsoleLogs.children.length > 80) {
+      redTeamConsoleLogs.removeChild(redTeamConsoleLogs.firstChild);
+    }
+    redTeamConsoleLogs.scrollTop = redTeamConsoleLogs.scrollHeight;
+  }
+
+  function renderRedTeamDossier(report) {
+    lastRedTeamReport = report;
+    if (!redTeamDossier) return;
+
+    redTeamDossier.style.display = 'flex';
+    if (btnLaunchRedTeam) btnLaunchRedTeam.style.display = 'inline-flex';
+    if (btnAbortRedTeam) btnAbortRedTeam.style.display = 'none';
+
+    if (dossierScoreVal) dossierScoreVal.textContent = `${report.survivabilityScore}/100`;
+    if (dossierGradeVal) {
+      dossierGradeVal.textContent = `GRADE ${report.survivabilityGrade}`;
+      dossierGradeVal.className = `dossier-grade-tag grade-${report.survivabilityGrade}`;
+    }
+
+    if (dossierTitle) {
+      dossierTitle.textContent = `Mission Debrief: ${report.breachesFound.length} Breaches Identified`;
+    }
+    if (dossierSummaryText) {
+      dossierSummaryText.textContent = `System survivability score: ${report.survivabilityScore}/100 [Grade ${report.survivabilityGrade}]. Dispatched ${report.totalProbes} adversarial probes across ${report.totalWaves} compound assault waves in ${Math.round(report.durationMs / 1000)}s.`;
+    }
+    if (dossierFindingsCount) {
+      dossierFindingsCount.textContent = `${report.breachesFound.length} breaches found`;
+    }
+
+    if (dossierFindingsList) {
+      if (report.breachesFound.length === 0) {
+        dossierFindingsList.innerHTML = '<div class="empty-state">Zero breaches detected. Target system sustained all adversarial compound assault waves!</div>';
+      } else {
+        dossierFindingsList.innerHTML = report.breachesFound.map(b => `
+          <div class="breach-card severity-${b.severity}">
+            <div class="breach-card-top">
+              <div class="breach-title-wrap">
+                <span class="severity-pill severity-${b.severity}">${b.severity.toUpperCase()}</span>
+                <span class="breach-title">${escapeHtml(b.title)}</span>
+                <span class="category-pill">${escapeHtml(b.category)}</span>
+              </div>
+              <span class="persona-callsign">${escapeHtml(b.callSign || 'EXPLOIT')}</span>
+            </div>
+            <div class="breach-desc">${escapeHtml(b.impact)}</div>
+            <div class="breach-proof-box">
+              <div><strong>Target Endpoint:</strong> ${escapeHtml(b.endpoint)}</div>
+              <div><strong>Probe Response:</strong> Status ${b.proofOfBreach.responseStatus} in ${b.proofOfBreach.responseDurationMs}ms</div>
+              <div><strong>Evidence Snippet:</strong> ${escapeHtml(b.proofOfBreach.snippet || '(empty)')}</div>
+            </div>
+            <div>
+              <span class="breach-remedy"><strong>Remedy:</strong> ${escapeHtml(b.remediation)}</span>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
+    redTeamDossier.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function autoHealDiscoveredBreaches() {
+    if (!lastRedTeamReport || !lastRedTeamReport.breachesFound || lastRedTeamReport.breachesFound.length === 0) {
+      alert('No active breaches in report to heal.');
+      return;
+    }
+
+    const failedCheckNames = Array.from(new Set(
+      lastRedTeamReport.breachesFound
+        .map(b => b.autoHealCheckKey)
+        .filter(Boolean)
+    ));
+
+    // Open healer modal and configure
+    if (healerProjectDir && (!healerProjectDir.value || healerProjectDir.value === '.')) {
+      healerProjectDir.value = 'examples/vulnerable-backend';
+    }
+    if (healerModal) {
+      healerModal.style.display = 'flex';
+    }
+    if (healerScanStatus) {
+      healerScanStatus.style.display = 'block';
+      healerScanStatus.innerHTML = `Loaded <strong>${failedCheckNames.length}</strong> targeted breaches from Red Team Dossier: <code>${failedCheckNames.join(', ')}</code>. Initializing CodeMod scanner...`;
+    }
+
+    setTimeout(() => {
+      if (btnHealerScan) {
+        btnHealerScan.click();
+      }
+    }, 400);
+  }
+
+  function exportDossier(format) {
+    if (!lastRedTeamReport) {
+      alert('No completed campaign report to export.');
+      return;
+    }
+
+    let content = '';
+    let filename = `faultmesh-redteam-dossier-${lastRedTeamReport.campaignId}.${format === 'json' ? 'json' : 'md'}`;
+    let type = format === 'json' ? 'application/json' : 'text/markdown';
+
+    if (format === 'json') {
+      content = JSON.stringify(lastRedTeamReport, null, 2);
+    } else {
+      content = [
+        `# FaultMesh Red Team Mission Debrief Dossier`,
+        ``,
+        `**Campaign ID:** ${lastRedTeamReport.campaignId}`,
+        `**Target URL:** ${lastRedTeamReport.targetUrl}`,
+        `**Intensity:** ${lastRedTeamReport.intensity.toUpperCase()}`,
+        `**Survivability Score:** ${lastRedTeamReport.survivabilityScore}/100 (Grade ${lastRedTeamReport.survivabilityGrade})`,
+        `**Probes Dispatched:** ${lastRedTeamReport.totalProbes}`,
+        `**Breaches Discovered:** ${lastRedTeamReport.breachesFound.length}`,
+        `**Duration:** ${Math.round(lastRedTeamReport.durationMs / 1000)} seconds`,
+        ``,
+        `## Active Personas`,
+        ...lastRedTeamReport.activePersonas.map(p => `- ${p}`),
+        ``,
+        `## Discovered Breaches`,
+        ...lastRedTeamReport.breachesFound.map((b, i) => [
+          `### ${i + 1}. [${b.severity.toUpperCase()}] ${b.title}`,
+          `- **Category:** ${b.category}`,
+          `- **Persona:** ${b.personaName} (${b.callSign})`,
+          `- **Endpoint:** ${b.endpoint}`,
+          `- **Impact:** ${b.impact}`,
+          `- **Remediation:** ${b.remediation}`,
+          `- **Evidence:** Status ${b.proofOfBreach.responseStatus} in ${b.proofOfBreach.responseDurationMs}ms - \`${b.proofOfBreach.snippet}\``,
+          ``,
+        ].join('\n')),
+      ].join('\n');
+    }
+
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  if (btnLaunchRedTeam) btnLaunchRedTeam.addEventListener('click', startRedTeamCampaign);
+  if (btnAbortRedTeam) btnAbortRedTeam.addEventListener('click', abortRedTeamCampaign);
+  if (btnAutoHealBreaches) btnAutoHealBreaches.addEventListener('click', autoHealDiscoveredBreaches);
+  if (btnExportDossierMd) btnExportDossierMd.addEventListener('click', () => exportDossier('md'));
+  if (btnExportDossierJson) btnExportDossierJson.addEventListener('click', () => exportDossier('json'));
 
   function escapeHtml(str) {
     return String(str || '').replace(/[&<>"']/g, m => ({
