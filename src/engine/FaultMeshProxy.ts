@@ -51,11 +51,37 @@ export class FaultMeshProxy {
         faultMesh: true,
       });
 
-      res.writeHead(statusToxic.statusCode, {
+      // Check if there is also an active downstream latency toxic
+      const latencyRule = this.toxicPipeline.getRules().find(r =>
+        r.enabled &&
+        r.type === 'latency' &&
+        r.direction === 'downstream' &&
+        (!r.pathPattern || !r.pathPattern.trim() || requestPath.includes(r.pathPattern.trim()))
+      );
+
+      if (latencyRule && latencyRule.config) {
+        const lCfg = latencyRule.config as any;
+        let delay = Math.max(0, lCfg.latencyMs || 0);
+        if (lCfg.jitterMs) {
+          const jitter = (Math.random() * 2 - 1) * lCfg.jitterMs;
+          delay = Math.max(0, Math.round(delay + jitter));
+        }
+        if (delay > 0) {
+          appliedToxics.push(`Latency (${delay}ms)`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+
+      const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'X-FaultMesh-Injected': 'status',
         'Access-Control-Allow-Origin': '*',
-      });
+      };
+      if (statusToxic.statusCode === 429) {
+        headers['Retry-After'] = '15';
+      }
+
+      res.writeHead(statusToxic.statusCode, headers);
       res.end(body);
 
       this.telemetryHub.recordRequestComplete({

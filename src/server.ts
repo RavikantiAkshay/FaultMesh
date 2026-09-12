@@ -31,6 +31,7 @@ export function createMockUpstreamServer(port: number): http.Server {
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Cache-Control', 'no-store, no-cache');
 
     const url = new URL(req.url || '/', `http://localhost:${port}`);
 

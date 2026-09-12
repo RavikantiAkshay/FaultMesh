@@ -650,16 +650,48 @@ body {
 
 .columns-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
   margin-bottom: 16px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.column {
+#leftWorkbenchCol,
+#rightWorkbenchCol {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
+}
+
+.presets-card,
+.custom-rule-card,
+.active-rules-card {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.response-inspector-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.live-log-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .adder-subgroup {
@@ -740,22 +772,36 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   padding: 8px 12px;
   background: var(--bg-subtle);
   border: 1px solid var(--border-default);
   border-radius: var(--radius);
+  min-width: 0;
+}
+
+.rule-item > div:first-child {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
 }
 
 .rule-title {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rule-subtitle {
   font-size: 11px;
   color: var(--text-muted);
   font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .empty-state {
@@ -776,6 +822,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .inspector-controls {
@@ -783,11 +832,13 @@ body {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .inspector-select {
   flex: 1;
-  min-width: 200px;
+  min-width: 180px;
+  max-width: 100%;
   padding: 6px 10px;
   font-size: 12px;
 }
@@ -795,25 +846,34 @@ body {
 .response-meta-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 10px 14px;
   background: var(--bg-subtle);
   border: 1px solid var(--border-default);
   border-radius: var(--radius);
-  padding: 7px 12px;
+  padding: 8px 12px;
   font-family: var(--font-mono);
   font-size: 11px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .meta-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  min-width: 0;
+}
+
+.meta-item.meta-item-applied {
+  flex: 1;
+  min-width: 0;
 }
 
 .meta-label {
   color: var(--text-muted);
   font-size: 11px;
+  flex-shrink: 0;
 }
 
 .status-pill {
@@ -825,12 +885,16 @@ body {
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
   color: var(--text-main);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .response-meta {
   color: var(--text-main);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .response-meta-rule {
@@ -841,6 +905,12 @@ body {
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .active-rules-pill {
@@ -851,7 +921,12 @@ body {
   background: var(--bg-surface);
   color: var(--text-muted);
   border: 1px solid var(--border-default);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .active-rules-pill.active {
@@ -870,22 +945,29 @@ body {
 
 .response-body-wrapper {
   width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .response-body-pre {
+  flex: 1;
   background: var(--bg-subtle);
   border: 1px solid var(--border-default);
   border-radius: var(--radius);
   padding: 12px 14px;
   font-family: var(--font-mono);
   font-size: 11px;
-  min-height: 140px;
-  max-height: 220px;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
   color: var(--text-main);
   white-space: pre-wrap;
-  word-break: break-word;
+  word-break: break-all;
+  overflow-wrap: anywhere;
   line-height: 1.45;
+  box-sizing: border-box;
 }
 
 .inspector-footer {
@@ -905,18 +987,16 @@ body {
 }
 
 /* ==========================================================================
-   LIVE TRAFFIC LOG (Full Width Across Bottom)
+   LIVE TRAFFIC LOG (Card in Column 2, Rows 2-3)
    ========================================================================== */
 
-.full-width-log-section {
-  margin-top: 0;
-}
-
-.full-width-table-container {
-  max-height: 200px;
+.log-table-container {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   border: 1px solid var(--border-default);
   border-radius: var(--radius);
+  box-sizing: border-box;
 }
 
 .log-table {
@@ -1579,5 +1659,29 @@ button {
 .healer-btn-group {
   display: flex;
   gap: 8px;
+}
+
+@media (max-width: 1024px) {
+  .columns-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .presets-card,
+  .response-inspector-card,
+  .custom-rule-card,
+  .active-rules-card,
+  .live-log-card {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+    height: auto !important;
+  }
+
+  .response-body-pre {
+    max-height: 240px;
+  }
+
+  .log-table-container {
+    max-height: 260px;
+  }
 }
 

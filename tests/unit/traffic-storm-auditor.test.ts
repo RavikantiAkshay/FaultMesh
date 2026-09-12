@@ -58,11 +58,11 @@ describe('TrafficStormAuditor — DoS, Rate Limit & Idempotency Testing Suite', 
     await new Promise<void>((resolve) => mockServer.close(() => resolve()));
   });
 
-  it('evaluates resilient profile and awards Grade A with 100/100 score across 4 checks', async () => {
+  it('evaluates resilient profile and awards Grade A with 100/100 score across 8 checks', async () => {
     const report = await auditor.runStormSuite('resilient');
 
-    expect(report.totalChecks).toBe(4);
-    expect(report.passedChecks).toBe(4);
+    expect(report.totalChecks).toBe(8);
+    expect(report.passedChecks).toBe(8);
     expect(report.score).toBe(100);
     expect(report.grade).toBe('A');
     expect(report.checks.every((c) => c.passed)).toBe(true);
@@ -72,26 +72,35 @@ describe('TrafficStormAuditor — DoS, Rate Limit & Idempotency Testing Suite', 
     expect(checkIds).toContain('storm_payload');
     expect(checkIds).toContain('storm_slowloris');
     expect(checkIds).toContain('storm_idempotency');
+    expect(checkIds).toContain('storm_redos');
+    expect(checkIds).toContain('storm_race');
+    expect(checkIds).toContain('storm_slow_post');
+    expect(checkIds).toContain('storm_avalanche');
   });
 
-  it('evaluates fragile profile, assigns Grade F (0/100), and generates 4 actionable remediations', async () => {
+  it('evaluates fragile profile, assigns Grade F (0/100), and generates 8 actionable remediations', async () => {
     const report = await auditor.runStormSuite('fragile');
 
-    expect(report.totalChecks).toBe(4);
+    expect(report.totalChecks).toBe(8);
     expect(report.passedChecks).toBe(0);
     expect(report.score).toBe(0);
     expect(report.grade).toBe('F');
     expect(report.checks.every((c) => !c.passed)).toBe(true);
-    expect(report.recommendations.length).toBe(4);
+    expect(report.recommendations.length).toBe(8);
   });
 
   it('validates each traffic storm check has complete metadata and valid categories', async () => {
     const report = await auditor.runStormSuite('resilient');
 
+    const validCategories = [
+      'ratelimit', 'payload', 'slowloris', 'idempotency',
+      'redos', 'concurrency-race', 'slow-post', 'avalanche'
+    ];
+
     for (const check of report.checks) {
       expect(check.id).toBeDefined();
       expect(check.name.length).toBeGreaterThan(0);
-      expect(['ratelimit', 'payload', 'slowloris', 'idempotency']).toContain(check.category);
+      expect(validCategories).toContain(check.category);
       expect(['critical', 'high', 'medium', 'low']).toContain(check.severity);
       expect(check.details.length).toBeGreaterThan(0);
       expect(check.remediation.length).toBeGreaterThan(0);

@@ -20,8 +20,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnCloseResponse = document.getElementById('btnCloseResponse');
 
   const btnPresetSlowMobile = document.getElementById('btnPresetSlowMobile');
+  const btnPresetJitter = document.getElementById('btnPresetJitter');
   const btnPresetDisconnect = document.getElementById('btnPresetDisconnect');
+  const btnPresetRateLimit = document.getElementById('btnPresetRateLimit');
   const btnPresetOutage = document.getElementById('btnPresetOutage');
+  const btnPresetGatewayTimeout = document.getElementById('btnPresetGatewayTimeout');
   const btnPresetCorrupt = document.getElementById('btnPresetCorrupt');
   const btnClearAllRules = document.getElementById('btnClearAllRules');
 
@@ -175,7 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
         respStatusBadge.className = 'status-pill';
       }
       if (respDuration) respDuration.textContent = '-- ms';
-      if (respAppliedRule) respAppliedRule.textContent = 'Rule: None';
+      if (respAppliedRule) respAppliedRule.textContent = 'None';
       if (testFeedback) {
         testFeedback.textContent = 'Click "Send Test Request" or enable any scenario on the left to inspect responses.';
         testFeedback.style.color = 'var(--text-muted)';
@@ -193,8 +196,16 @@ document.addEventListener('DOMContentLoaded', () => {
     respStatusBadge.className = 'status-pill ' + (isError || status >= 500 ? 'code-5xx' : (status >= 400 ? 'code-4xx' : 'code-2xx'));
     respDuration.textContent = `${durationMs}ms`;
 
-    const ruleNames = appliedRules && appliedRules.length > 0 ? appliedRules.join(', ') : 'None (Normal Traffic)';
-    respAppliedRule.textContent = `Applied: ${ruleNames}`;
+    if (!appliedRules || appliedRules.length === 0) {
+      respAppliedRule.textContent = 'None';
+      respAppliedRule.removeAttribute('title');
+    } else if (appliedRules.length === 1) {
+      respAppliedRule.textContent = appliedRules[0];
+      respAppliedRule.title = `Injected: ${appliedRules[0]}`;
+    } else {
+      respAppliedRule.textContent = `${appliedRules[0]} (+${appliedRules.length - 1} more)`;
+      respAppliedRule.title = `Injected Faults:\n${appliedRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}`;
+    }
 
     // Format body as formatted JSON if possible
     try {
@@ -308,10 +319,15 @@ document.addEventListener('DOMContentLoaded', () => {
       if (activeRules.length === 0) {
         activeRulesIndicator.textContent = 'Traffic: Normal';
         activeRulesIndicator.className = 'active-rules-pill';
-      } else {
-        const names = activeRules.map(r => r.name).join(', ');
-        activeRulesIndicator.textContent = `Simulating: ${names}`;
+        activeRulesIndicator.removeAttribute('title');
+      } else if (activeRules.length === 1) {
+        activeRulesIndicator.textContent = `Simulating: ${activeRules[0].name}`;
         activeRulesIndicator.className = 'active-rules-pill active';
+        activeRulesIndicator.title = `Simulating: ${activeRules[0].name}`;
+      } else {
+        activeRulesIndicator.textContent = `Simulating: ${activeRules[0].name} (+${activeRules.length - 1} more)`;
+        activeRulesIndicator.className = 'active-rules-pill active';
+        activeRulesIndicator.title = `Active Simulation Rules:\n${activeRules.map((r, i) => `${i + 1}. ${r.name}`).join('\n')}`;
       }
     }
 
@@ -475,7 +491,7 @@ document.addEventListener('DOMContentLoaded', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id: `preset_bw_${Date.now()}`,
+        id: 'preset_slow_mobile_bw',
         name: 'Slow Mobile Internet (16 kbps limit)',
         type: 'bandwidth',
         direction: 'downstream',
@@ -487,7 +503,7 @@ document.addEventListener('DOMContentLoaded', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id: `preset_lat_${Date.now()}`,
+        id: 'preset_slow_mobile_lat',
         name: 'Mobile Delay (350ms)',
         type: 'latency',
         direction: 'downstream',
@@ -499,12 +515,31 @@ document.addEventListener('DOMContentLoaded', () => {
     executeTestRequest();
   });
 
+  if (btnPresetJitter) {
+    btnPresetJitter.addEventListener('click', async () => {
+      await fetch('/_faultmesh/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'preset_jitter_lat',
+          name: 'Packet Jitter Spike (400ms ±250ms)',
+          type: 'latency',
+          direction: 'downstream',
+          enabled: true,
+          config: { latencyMs: 400, jitterMs: 250 },
+        }),
+      });
+      await refreshStatus();
+      executeTestRequest();
+    });
+  }
+
   btnPresetDisconnect.addEventListener('click', async () => {
     await fetch('/_faultmesh/rules', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id: `preset_cut_${Date.now()}`,
+        id: 'preset_disconnect_cut',
         name: 'Connection Drop (after 30 bytes)',
         type: 'cut',
         direction: 'downstream',
@@ -516,12 +551,31 @@ document.addEventListener('DOMContentLoaded', () => {
     executeTestRequest();
   });
 
+  if (btnPresetRateLimit) {
+    btnPresetRateLimit.addEventListener('click', async () => {
+      await fetch('/_faultmesh/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'preset_ratelimit_status',
+          name: 'Rate Limit Surge (HTTP 429)',
+          type: 'status',
+          direction: 'downstream',
+          enabled: true,
+          config: { statusCode: 429, statusMessage: 'Too Many Requests (Rate Limited - Retry After 15s)' },
+        }),
+      });
+      await refreshStatus();
+      executeTestRequest();
+    });
+  }
+
   btnPresetOutage.addEventListener('click', async () => {
     await fetch('/_faultmesh/rules', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id: `preset_503_${Date.now()}`,
+        id: 'preset_outage_status',
         name: 'Server Outage (HTTP 503)',
         type: 'status',
         direction: 'downstream',
@@ -533,12 +587,43 @@ document.addEventListener('DOMContentLoaded', () => {
     executeTestRequest();
   });
 
+  if (btnPresetGatewayTimeout) {
+    btnPresetGatewayTimeout.addEventListener('click', async () => {
+      await fetch('/_faultmesh/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'preset_gateway_lat',
+          name: 'Upstream Delay (2000ms)',
+          type: 'latency',
+          direction: 'downstream',
+          enabled: true,
+          config: { latencyMs: 2000, jitterMs: 0 },
+        }),
+      });
+      await fetch('/_faultmesh/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'preset_gateway_status',
+          name: 'Gateway Timeout (HTTP 504)',
+          type: 'status',
+          direction: 'downstream',
+          enabled: true,
+          config: { statusCode: 504, statusMessage: 'Gateway Timeout (Upstream Deadlock)' },
+        }),
+      });
+      await refreshStatus();
+      executeTestRequest();
+    });
+  }
+
   btnPresetCorrupt.addEventListener('click', async () => {
     await fetch('/_faultmesh/rules', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id: `preset_corrupt_${Date.now()}`,
+        id: 'preset_corrupt_data',
         name: 'Corrupted Response (Truncated JSON)',
         type: 'corrupt',
         direction: 'downstream',
@@ -550,7 +635,7 @@ document.addEventListener('DOMContentLoaded', () => {
     executeTestRequest();
   });
 
-  // 8. Diagnostics & Security Audit Suite Definitions
+  // 8. Diagnostics & Security Audit Suite Definitions (32 Checks Total)
   const RESILIENCE_CHECKS = [
     {
       num: '01',
@@ -586,6 +671,41 @@ document.addEventListener('DOMContentLoaded', () => {
       category: 'Availability',
       description: 'Tests if the application properly receives, traps, and gracefully responds to temporary upstream server downtime.',
       probe: 'Forces proxy to return HTTP 503 Service Unavailable.'
+    },
+    {
+      num: '06',
+      name: 'Packet Jitter & Latency Variance',
+      category: 'Jitter',
+      description: 'Injects fluctuating network latency variance (100ms-350ms) to evaluate client jitter buffering and prevent timeout crashes.',
+      probe: 'Applies latency with dynamic 70ms jitter variance.'
+    },
+    {
+      num: '07',
+      name: 'Half-Open Circuit Breaker Recovery',
+      category: 'Resilience',
+      description: 'Tests if client circuit breaker automatically recovers after a transient outage lifts without staying permanently latched in failure state.',
+      probe: 'Injects a transient 503 outage followed by immediate recovery probe.'
+    },
+    {
+      num: '08',
+      name: 'Downstream Socket Starvation & Slow Read',
+      category: 'Concurrency',
+      description: 'Evaluates if slow downstream readers starve the server worker pool or block concurrent health probe requests.',
+      probe: 'Holds slow stream at 8 kbps while concurrently probing /api/health.'
+    },
+    {
+      num: '09',
+      name: 'Zombie Connection Leak Probe',
+      category: 'Resources',
+      description: 'Verifies backend closes downstream descriptors and frees resources cleanly when client connections abort prematurely.',
+      probe: 'Dispatches aborted client socket and measures server recovery latency.'
+    },
+    {
+      num: '10',
+      name: 'Payload Truncation & Partial Transfer',
+      category: 'Integrity',
+      description: 'Tests whether clients safely identify incomplete HTTP body streams rather than treating truncated responses as valid.',
+      probe: 'Truncates TCP stream after 30 bytes to test stream termination validation.'
     }
   ];
 
@@ -645,6 +765,62 @@ document.addEventListener('DOMContentLoaded', () => {
       severity: 'critical',
       description: 'Probes input fields using harmless syntax markers (\' OR \'1\'=\'1) and non-executable canary tags (<faultmesh-canary-test>) to verify parameterization with 0 database mutation.',
       probe: 'Zero-damage canary probe verifying parameter escaping and schema validation.'
+    },
+    {
+      num: '08',
+      name: 'Host Header Poisoning & Reflection',
+      category: 'Headers',
+      severity: 'high',
+      description: 'Tests if server validates incoming Host and X-Forwarded-Host headers or echoes untrusted attacker domains into redirect URLs.',
+      probe: 'Inspects location redirects and response headers under spoofed Host headers.'
+    },
+    {
+      num: '09',
+      name: 'Client IP Spoofing & Rate-Limit Bypass',
+      category: 'Identity',
+      severity: 'medium',
+      description: 'Checks whether client IP determination blindly trusts unverified X-Forwarded-For headers to bypass rate limiters or security filters.',
+      probe: 'Dispatches forged upstream IP headers to evaluate trusted proxy configuration.'
+    },
+    {
+      num: '10',
+      name: 'HTTP Parameter Pollution (HPP)',
+      category: 'Parameters',
+      severity: 'medium',
+      description: 'Tests if server safely handles duplicate query parameters (?id=1&id=2) without array type confusion or unhandled 500 crashes.',
+      probe: 'Probes duplicate query parameters across API endpoints.'
+    },
+    {
+      num: '11',
+      name: 'Sensitive Cache-Control Verification',
+      category: 'Caching',
+      severity: 'high',
+      description: 'Verifies that endpoints returning authenticated or private user data enforce Cache-Control: no-store to prevent shared proxy and browser cache leaks.',
+      probe: 'Inspects Cache-Control and Pragma response directives on user routes.'
+    },
+    {
+      num: '12',
+      name: 'Unsigned & Broken Authorization Headers',
+      category: 'Auth Safety',
+      severity: 'high',
+      description: 'Tests if server safely rejects malformed or truncated Authorization headers (HTTP 401/400) without unhandled 500 crashes.',
+      probe: 'Submits malformed Bearer tokens to verify graceful rejection.'
+    },
+    {
+      num: '13',
+      name: 'Constant-Time Authentication & Timing Attacks',
+      category: 'Cryptography',
+      severity: 'medium',
+      description: 'Tests if credential and token verification exhibits significant latency variations (side-channel timing leaks).',
+      probe: 'Measures delta latency across varying token lengths to verify constant-time evaluation.'
+    },
+    {
+      num: '14',
+      name: 'Server Metadata & Secret Configuration Exposure',
+      category: 'Config Exposure',
+      severity: 'critical',
+      description: 'Probes for unintentional exposure of sensitive server files such as .env, .git, or unauthenticated internal configuration routes.',
+      probe: 'Probes /.env and dotfiles to confirm web server blocks configuration exposure.'
     }
   ];
 
@@ -680,6 +856,38 @@ document.addEventListener('DOMContentLoaded', () => {
       severity: 'critical',
       description: 'Verifies that concurrent duplicate POST requests sharing an Idempotency-Key are deduplicated to prevent double-billing and duplicate records.',
       probe: 'Dispatches concurrent POST requests with duplicate Idempotency-Key headers.'
+    },
+    {
+      num: '05',
+      name: 'ReDoS (Regex Denial of Service) Lockup Probe',
+      category: 'Regex Safety',
+      severity: 'critical',
+      description: 'Probes input fields with catastrophic backtracking pattern inputs to verify regular expressions do not lock up the server CPU event loop.',
+      probe: 'Sends nested quantifier string to test regex evaluation bounds.'
+    },
+    {
+      num: '06',
+      name: 'Concurrent Race Condition & Double Processing',
+      category: 'Concurrency',
+      severity: 'critical',
+      description: 'Dispatches concurrent parallel requests against transactional endpoints to evaluate atomic locking and double-spend protection.',
+      probe: 'Executes parallel burst with identical transaction keys to test lock safety.'
+    },
+    {
+      num: '07',
+      name: 'Chunked Request Drip & Slow POST Defense',
+      category: 'Body Timeouts',
+      severity: 'high',
+      description: 'Evaluates server defense against Slow POST drip attacks by checking requestTimeout limits on incomplete body deliveries.',
+      probe: 'Probes request body reception bounds with delayed chunk transfer.'
+    },
+    {
+      num: '08',
+      name: 'Resource Avalanche & Sudden Concurrency Flood',
+      category: 'Queue Saturation',
+      severity: 'high',
+      description: 'Sends an avalanche burst of parallel requests within a 50ms window to verify connection queuing and sub-second mean response latency.',
+      probe: 'Dispatches burst concurrency flood to test queue shedding and keep-alive stability.'
     }
   ];
 
@@ -723,43 +931,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (mode === 'storm') {
       if (tabStorm) tabStorm.classList.add('active');
-      if (diagHeaderTitle) diagHeaderTitle.textContent = 'Traffic Storms & DoS Defense Suite';
-      if (diagHeaderSubtitle) diagHeaderSubtitle.textContent = 'Evaluates rate limit backoff (429), oversized payload protection (413), slowloris drips, and idempotency deduplication.';
+      if (diagHeaderTitle) diagHeaderTitle.textContent = 'Traffic Storms & DoS Defense Suite (8 Checks)';
+      if (diagHeaderSubtitle) diagHeaderSubtitle.textContent = 'Evaluates rate limit backoff (429), oversized payloads (413), slowloris drips, idempotency, ReDoS lockup, race conditions, and avalanche floods.';
       if (testTargetProfile) {
         testTargetProfile.innerHTML = `
           <option value="resilient">Target: Resilient System (Grade A)</option>
           <option value="fragile">Target: Fragile System (Grade F)</option>
         `;
       }
-      if (btnRunDiagnostics) btnRunDiagnostics.textContent = 'Run Traffic Storm Benchmark';
+      if (btnRunDiagnostics) btnRunDiagnostics.textContent = 'Run 8-Point Storm Benchmark';
       scoreTitle.textContent = 'Ready for Traffic Storms & DoS evaluation';
-      scoreSubtitle.textContent = 'Click "Run Traffic Storm Benchmark" to test rate limit backoff, slowloris defense, and idempotency.';
+      scoreSubtitle.textContent = 'Click "Run 8-Point Storm Benchmark" to test rate limit backoff, slowloris defense, ReDoS, and concurrency floods.';
     } else if (mode === 'security') {
       if (tabSecurity) tabSecurity.classList.add('active');
-      if (diagHeaderTitle) diagHeaderTitle.textContent = 'Security & Protocol Audit';
-      if (diagHeaderSubtitle) diagHeaderSubtitle.textContent = 'Non-destructive 7-point audit evaluating defensive headers, CORS, URL tokens, response PII, path traversal, and canary injection.';
+      if (diagHeaderTitle) diagHeaderTitle.textContent = 'Security & Protocol Audit (14 Checks)';
+      if (diagHeaderSubtitle) diagHeaderSubtitle.textContent = 'Non-destructive 14-point audit evaluating headers, CORS, secrets, PII, path traversal, canary injection, host headers, IP spoofing, HPP, cache-control, and metadata.';
       if (testTargetProfile) {
         testTargetProfile.innerHTML = `
           <option value="secure">Target: Secure API (Grade A)</option>
           <option value="vulnerable">Target: Vulnerable API (Grade F)</option>
         `;
       }
-      if (btnRunDiagnostics) btnRunDiagnostics.textContent = 'Run Security Audit';
+      if (btnRunDiagnostics) btnRunDiagnostics.textContent = 'Run 14-Point Security Audit';
       scoreTitle.textContent = 'Ready to audit security';
-      scoreSubtitle.textContent = 'Click "Run Security Audit" to evaluate all 7 defensive security, CORS, PII, and injection probes.';
+      scoreSubtitle.textContent = 'Click "Run 14-Point Security Audit" to evaluate all 14 defensive security, CORS, PII, injection, and auth probes.';
     } else {
       if (tabResilience) tabResilience.classList.add('active');
-      if (diagHeaderTitle) diagHeaderTitle.textContent = 'Automated API Resilience Benchmark';
-      if (diagHeaderSubtitle) diagHeaderSubtitle.textContent = 'Automated 5-point test suite evaluating client resilience against network delay, throttling, cuts, corruptions, and 503 outages.';
+      if (diagHeaderTitle) diagHeaderTitle.textContent = 'Automated API Resilience Benchmark (10 Checks)';
+      if (diagHeaderSubtitle) diagHeaderSubtitle.textContent = 'Automated 10-point test suite evaluating client resilience against network delay, throttling, cuts, corruptions, 503 outages, jitter, circuit breakers, and starvation.';
       if (testTargetProfile) {
         testTargetProfile.innerHTML = `
           <option value="resilient">Target: Resilient App (Grade A)</option>
           <option value="fragile">Target: Fragile App (Grade F)</option>
         `;
       }
-      if (btnRunDiagnostics) btnRunDiagnostics.textContent = 'Run 5-Point Benchmark';
+      if (btnRunDiagnostics) btnRunDiagnostics.textContent = 'Run 10-Point Resilience Benchmark';
       scoreTitle.textContent = 'Ready to evaluate resilience';
-      scoreSubtitle.textContent = 'Click "Run 5-Point Benchmark" to evaluate client resilience against 5 real failure cases.';
+      scoreSubtitle.textContent = 'Click "Run 10-Point Resilience Benchmark" to evaluate client resilience against 10 real network failure cases.';
     }
     scoreValue.textContent = '--';
     scoreGrade.textContent = 'UNTESTED';
@@ -811,11 +1019,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
           isRunningDiagnostics = false;
           btnRunDiagnostics.disabled = false;
-          btnRunDiagnostics.textContent = 'Run Traffic Storm Benchmark';
+          btnRunDiagnostics.textContent = 'Run 8-Point Storm Benchmark';
         }
       } else if (currentDiagMode === 'security') {
         btnRunDiagnostics.textContent = 'Auditing...';
-        scoreTitle.textContent = 'Running Security Audit...';
+        scoreTitle.textContent = 'Running 14-Point Security Audit...';
         scoreSubtitle.textContent = 'Auditing defensive headers, CORS safety, query secret leakage, response PII, and inert canary probes.';
 
         const profile = testTargetProfile ? testTargetProfile.value : 'secure';
@@ -836,12 +1044,12 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
           isRunningDiagnostics = false;
           btnRunDiagnostics.disabled = false;
-          btnRunDiagnostics.textContent = 'Run Security Audit';
+          btnRunDiagnostics.textContent = 'Run 14-Point Security Audit';
         }
       } else {
         btnRunDiagnostics.textContent = 'Running...';
-        scoreTitle.textContent = 'Running 5-Point Benchmark...';
-        scoreSubtitle.textContent = 'Evaluating delay, slow speed, connection drops, corrupted JSON, and 503 errors.';
+        scoreTitle.textContent = 'Running 10-Point Resilience Benchmark...';
+        scoreSubtitle.textContent = 'Evaluating delay, slow speed, cuts, corruption, 503 errors, jitter, circuit breakers, and starvation.';
 
         const profile = testTargetProfile ? testTargetProfile.value : 'resilient';
 
@@ -861,7 +1069,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
           isRunningDiagnostics = false;
           btnRunDiagnostics.disabled = false;
-          btnRunDiagnostics.textContent = 'Run 5-Point Benchmark';
+          btnRunDiagnostics.textContent = 'Run 10-Point Resilience Benchmark';
         }
       }
     });
@@ -1271,7 +1479,7 @@ async def checkout(idempotency_key: str = Header(None)):
     scoreGrade.textContent = `GRADE ${report.grade}`;
 
     if (report.grade === 'A') {
-      scoreTitle.textContent = 'All 5 Resilience Checks Passed (Grade A)';
+      scoreTitle.textContent = 'All 10 Resilience Checks Passed (Grade A)';
     } else if (report.grade === 'B') {
       scoreTitle.textContent = 'Passed with Minor Issues (Grade B)';
     } else {
@@ -1334,7 +1542,7 @@ async def checkout(idempotency_key: str = Header(None)):
     scoreGrade.textContent = `GRADE ${report.grade}`;
 
     if (report.grade === 'A') {
-      scoreTitle.textContent = 'All 7 Security Checks Passed (Grade A)';
+      scoreTitle.textContent = 'All 14 Security Checks Passed (Grade A)';
     } else if (report.grade === 'B') {
       scoreTitle.textContent = 'Minor Security Issues Detected (Grade B)';
     } else {
@@ -1397,7 +1605,7 @@ async def checkout(idempotency_key: str = Header(None)):
     scoreGrade.textContent = `GRADE ${report.grade}`;
 
     if (report.grade === 'A') {
-      scoreTitle.textContent = 'All 4 Traffic Storm Checks Passed (Grade A)';
+      scoreTitle.textContent = 'All 8 Traffic Storm Checks Passed (Grade A)';
     } else if (report.grade === 'B') {
       scoreTitle.textContent = 'Passed with Minor Issues (Grade B)';
     } else {
@@ -1864,8 +2072,65 @@ async def checkout(idempotency_key: str = Header(None)):
     }[m]));
   }
 
+  // Synchronize Workbench Heights: Right column matches Left column perfectly
+  function syncWorkbenchHeights() {
+    const presetsCard = document.querySelector('.presets-card');
+    const customRuleCard = document.querySelector('.custom-rule-card');
+    const activeRulesCard = document.querySelector('.active-rules-card');
+    const responseInspector = document.getElementById('responseInspector');
+    const liveLogCard = document.querySelector('.live-log-card');
+    const leftWorkbenchCol = document.getElementById('leftWorkbenchCol');
+
+    if (!presetsCard || !customRuleCard || !activeRulesCard || !responseInspector || !liveLogCard) {
+      return;
+    }
+
+    if (window.innerWidth <= 1024) {
+      responseInspector.style.height = 'auto';
+      liveLogCard.style.height = 'auto';
+      return;
+    }
+
+    const presetsHeight = presetsCard.offsetHeight;
+    const customHeight = customRuleCard.offsetHeight;
+    const activeHeight = activeRulesCard.offsetHeight;
+
+    // Detect gap between cards in left column (default 16px)
+    let gap = 16;
+    if (leftWorkbenchCol) {
+      const colStyle = window.getComputedStyle(leftWorkbenchCol);
+      const parsedGap = parseFloat(colStyle.rowGap || colStyle.gap);
+      if (!isNaN(parsedGap) && parsedGap > 0) {
+        gap = parsedGap;
+      }
+    }
+
+    // 1. Response Inspector height matches the 1-Click Quick Presets card exactly
+    responseInspector.style.height = `${presetsHeight}px`;
+
+    // 2. Live Traffic Log starts at Custom Rule card and ends at Active Simulation Rules card
+    const targetLogHeight = customHeight + gap + activeHeight;
+    liveLogCard.style.height = `${targetLogHeight}px`;
+  }
+
+  if (typeof ResizeObserver !== 'undefined') {
+    const workbenchResizeObserver = new ResizeObserver(() => {
+      syncWorkbenchHeights();
+    });
+    const presetsEl = document.querySelector('.presets-card');
+    const customEl = document.querySelector('.custom-rule-card');
+    const activeEl = document.querySelector('.active-rules-card');
+    if (presetsEl) workbenchResizeObserver.observe(presetsEl);
+    if (customEl) workbenchResizeObserver.observe(customEl);
+    if (activeEl) workbenchResizeObserver.observe(activeEl);
+  }
+
+  window.addEventListener('resize', syncWorkbenchHeights);
+
   setDiagMode('resilience');
   loadTargetUrl();
   refreshStatus();
   setupSSE();
+  // Initial height synchronization after DOM render
+  setTimeout(syncWorkbenchHeights, 50);
 });

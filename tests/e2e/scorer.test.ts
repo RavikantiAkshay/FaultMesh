@@ -44,11 +44,11 @@ describe('FaultMesh Resilience Scorer Gauntlet (TDD)', () => {
     await new Promise<void>(resolve => mockServer.close(() => resolve()));
   });
 
-  it('runs the full 5-part chaos gauntlet and produces a weighted scorecard', async () => {
+  it('runs the full 10-part chaos gauntlet and produces a weighted scorecard', async () => {
     const scorecard = await scorer.runGauntlet();
 
-    expect(scorecard.totalAttacks).toBe(5);
-    expect(scorecard.results.length).toBe(5);
+    expect(scorecard.totalAttacks).toBe(10);
+    expect(scorecard.results.length).toBe(10);
     expect(scorecard.score).toBeGreaterThanOrEqual(0);
     expect(scorecard.score).toBeLessThanOrEqual(100);
     expect(['A', 'B', 'C', 'D', 'F']).toContain(scorecard.grade);

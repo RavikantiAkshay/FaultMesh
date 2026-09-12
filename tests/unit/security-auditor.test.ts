@@ -12,6 +12,7 @@ describe('SecurityAuditor — Zero-Damage Security & Protocol Audit', () => {
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('Cache-Control', 'no-store, no-cache');
 
       const url = new URL(req.url || '/', `http://localhost:${serverPort}`);
 
@@ -57,11 +58,11 @@ describe('SecurityAuditor — Zero-Damage Security & Protocol Audit', () => {
     await new Promise<void>((resolve) => mockServer.close(() => resolve()));
   });
 
-  it('evaluates secure profile and awards Grade A with 100/100 score across 7 checks', async () => {
+  it('evaluates secure profile and awards Grade A with 100/100 score across 14 checks', async () => {
     const report = await auditor.runAudit('secure');
 
-    expect(report.totalChecks).toBe(7);
-    expect(report.passedChecks).toBe(7);
+    expect(report.totalChecks).toBe(14);
+    expect(report.passedChecks).toBe(14);
     expect(report.score).toBe(100);
     expect(report.grade).toBe('A');
     expect(report.checks.every((c) => c.passed)).toBe(true);
@@ -74,17 +75,24 @@ describe('SecurityAuditor — Zero-Damage Security & Protocol Audit', () => {
     expect(checkIds).toContain('sec_errors');
     expect(checkIds).toContain('sec_traversal');
     expect(checkIds).toContain('sec_injection');
+    expect(checkIds).toContain('sec_host_header');
+    expect(checkIds).toContain('sec_ip_spoofing');
+    expect(checkIds).toContain('sec_hpp');
+    expect(checkIds).toContain('sec_cache_control');
+    expect(checkIds).toContain('sec_broken_auth');
+    expect(checkIds).toContain('sec_timing');
+    expect(checkIds).toContain('sec_metadata');
   });
 
-  it('evaluates vulnerable profile, assigns Grade F (0/100), and generates 7 actionable remediations', async () => {
+  it('evaluates vulnerable profile, assigns Grade F (0/100), and generates 14 actionable remediations', async () => {
     const report = await auditor.runAudit('vulnerable');
 
-    expect(report.totalChecks).toBe(7);
+    expect(report.totalChecks).toBe(14);
     expect(report.passedChecks).toBe(0);
     expect(report.score).toBe(0);
     expect(report.grade).toBe('F');
     expect(report.checks.every((c) => !c.passed)).toBe(true);
-    expect(report.recommendations.length).toBe(7);
+    expect(report.recommendations.length).toBe(14);
 
     // Verify critical severity checks exist
     const criticalChecks = report.checks.filter((c) => c.severity === 'critical');
@@ -94,10 +102,15 @@ describe('SecurityAuditor — Zero-Damage Security & Protocol Audit', () => {
   it('validates each security check has complete metadata and non-destructive details', async () => {
     const report = await auditor.runAudit('secure');
 
+    const validCategories = [
+      'headers', 'cors', 'leakage', 'injection', 'errors', 'pii-leakage', 'traversal',
+      'host-header', 'ip-spoofing', 'hpp', 'cache-control', 'auth', 'timing', 'metadata'
+    ];
+
     for (const check of report.checks) {
       expect(check.id).toBeDefined();
       expect(check.name.length).toBeGreaterThan(0);
-      expect(['headers', 'cors', 'leakage', 'injection', 'errors', 'pii-leakage', 'traversal']).toContain(check.category);
+      expect(validCategories).toContain(check.category);
       expect(['critical', 'high', 'medium', 'low']).toContain(check.severity);
       expect(check.details.length).toBeGreaterThan(0);
       expect(check.remediation.length).toBeGreaterThan(0);

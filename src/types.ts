@@ -76,10 +76,12 @@ export interface ProxyMetrics {
   avgLatencyMs: number;
 }
 
+export type ResilienceToxicCategory = ToxicType | 'jitter' | 'circuit-breaker' | 'starvation' | 'zombie-leak' | 'truncation';
+
 export interface ResilienceAttackResult {
   name: string;
   description: string;
-  toxicUsed: ToxicType;
+  toxicUsed: ResilienceToxicCategory;
   passed: boolean;
   latencyMs: number;
   errorCaught?: string;
@@ -98,10 +100,26 @@ export interface ResilienceScorecard {
 
 export type SecuritySeverity = 'critical' | 'high' | 'medium' | 'low';
 
+export type SecurityCategory = 
+  | 'headers' 
+  | 'cors' 
+  | 'leakage' 
+  | 'injection' 
+  | 'errors' 
+  | 'pii-leakage' 
+  | 'traversal'
+  | 'host-header'
+  | 'ip-spoofing'
+  | 'hpp'
+  | 'cache-control'
+  | 'auth'
+  | 'timing'
+  | 'metadata';
+
 export interface SecurityCheckResult {
   id: string;
   name: string;
-  category: 'headers' | 'cors' | 'leakage' | 'injection' | 'errors' | 'pii-leakage' | 'traversal';
+  category: SecurityCategory;
   description: string;
   passed: boolean;
   severity: SecuritySeverity;
@@ -120,10 +138,20 @@ export interface SecurityScorecard {
   recommendations: string[];
 }
 
+export type TrafficStormCategory = 
+  | 'ratelimit' 
+  | 'payload' 
+  | 'slowloris' 
+  | 'idempotency'
+  | 'redos'
+  | 'concurrency-race'
+  | 'slow-post'
+  | 'avalanche';
+
 export interface TrafficStormResult {
   id: string;
   name: string;
-  category: 'ratelimit' | 'payload' | 'slowloris' | 'idempotency';
+  category: TrafficStormCategory;
   description: string;
   passed: boolean;
   severity: SecuritySeverity;

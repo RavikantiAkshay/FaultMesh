@@ -163,7 +163,7 @@ describe('FaultMesh Control API (TDD)', () => {
     });
     expect(res.status).toBe(200);
     const scorecard = await res.json();
-    expect(scorecard.totalChecks).toBe(7);
+    expect(scorecard.totalChecks).toBe(14);
     expect(scorecard.score).toBe(100);
     expect(scorecard.grade).toBe('A');
   });
@@ -176,7 +176,7 @@ describe('FaultMesh Control API (TDD)', () => {
     });
     expect(res.status).toBe(200);
     const scorecard = await res.json();
-    expect(scorecard.totalChecks).toBe(4);
+    expect(scorecard.totalChecks).toBe(8);
     expect(scorecard.score).toBe(100);
     expect(scorecard.grade).toBe('A');
   });
