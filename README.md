@@ -1,8 +1,8 @@
 # FaultMesh
 
-High-Precision Network & API Fault Injection Engine and Live Resilience Auditor.
+High-Precision Network & API Fault Injection Engine, Autonomous Red Chaos Team, and Live Resilience Auditor.
 
-FaultMesh is a zero-dependency, lightweight chaos engineering middleman proxy and automated API auditor. It sits between your clients (frontend, mobile apps, microservices) and your backend to simulate real-world network disasters and audit your API for resilience, security headers, data leakage, and DoS defense.
+FaultMesh is a zero-dependency, lightweight chaos engineering middleman proxy and automated API auditor. It sits between your clients (frontend, mobile apps, microservices) and your backend to simulate real-world network disasters, audit your API for resilience and security flaws, and automatically repair discovered vulnerabilities with AST CodeMods.
 
 ---
 
@@ -51,61 +51,90 @@ Examples:
 
 ## Core Capabilities
 
-### 1. Automated 16-Point Audit Suite
-FaultMesh executes automated, non-destructive probe batteries against your API and produces a scored diagnostic report card (Grade A+ to F, vulnerability descriptions, and concrete remediation steps).
+### 1. Autonomous Red Chaos Team Engine
+Deploy automated multi-wave adversarial assault campaigns against your backend:
+* **Tactical Agent Personas:**
+  * `VULN-HUNTER` — Surface discovery, host header poisoning, CORS origin checks, auth perimeter bypass.
+  * `SILENT-TRAPPER` — Abrupt socket cuts, swallowed exceptions, corrupted JSON stream injections.
+  * `NET-FRACTURER` — Latency flutter, jitter fluctuation, gateway 504 hang.
+  * `MUTANT-PROBER` — Catastrophic ReDoS, transactional race interleaving, duplicate idempotency probing.
+  * `SURGE-STORMER` — Slowloris drip, 1MB buffer overflow, avalanche concurrent bursts.
+* **Live Tactical Telemetry Stream:** Real-time console log tracking probes, responses, and detected breaches.
+* **Survivability Scorecard & Mission Debrief:** Quantitative scoring (Grade A+ to F) with proof-of-exploit snippets and remediation guidelines.
 
-* **Network Resilience Suite (5 Checks):**
+---
+
+### 2. Auto-Healer & CodeMod Engine
+Repair discovered breaches directly in your codebase with zero guesswork:
+* **Deterministic AST CodeMods:** Surgically injects defensive headers (Helmet), payload limits (413), strict CORS origin validation, centralized error sanitizers, socket timeouts, host whitelist guards, path traversal sanitizers, and idempotency deduplication.
+* **Multi-Framework Support:** Native AST transformers for Express, FastAPI, and Go backends.
+* **Safe Local Execution:** Automatic timestamped backups (`.faultmesh-backup/`), 1-click rollback, and instant live backend re-verification.
+
+---
+
+### 3. Primary Audit Suite (32 Comprehensive Checks)
+FaultMesh executes automated, non-destructive probe batteries and produces scored diagnostic scorecards:
+
+* **Network Resilience Suite (10 Checks):**
   * Latency / Timeout Ingestion (200ms - 5000ms delay handling)
   * Bandwidth Choking (50 - 500 KB/s stream survival)
   * TCP Connection Cut (kernel-level `ECONNRESET` recovery)
   * Payload Truncation (malformed / partial JSON parsing safety)
   * Server Outage Emulation (HTTP 503 circuit-breaking & backoff)
+  * Latency Jitter & Variance
+  * Packet Loss & Drops
+  * Response Corruption & Garbled Bytes
+  * HTTP Header Stripping
+  * Premature Connection Reset
 
-* **Security & Protocol Audit Suite (7 Checks):**
+* **Security & Protocol Audit Suite (14 Checks):**
   * Defensive Headers (`X-Content-Type-Options`, `X-Frame-Options`, `HSTS`)
-  * CORS Origin & Credential Safety (flags `Access-Control-Allow-Origin: *` with credentials)
+  * CORS Origin & Credential Safety
   * Query Parameter Secret Scanner (flags tokens and passwords in GET URLs)
   * Outbound Response PII Scanner (scans for leaked API keys, tokens, and database hashes)
   * Stack Trace Sanitization (ensures 500 errors do not expose file paths or DB schemas)
-  * Path Traversal Probing (passive `../../etc/passwd` path handling check)
+  * Path Traversal Probing (passive directory traversal sequence check)
   * Safe Canary Syntax Probing (inert SQL quote balancing check without data mutation)
+  * Host Header Whitelist Validation
+  * Unsigned / Malformed Authorization Headers
+  * HTTP Method Override Protection
+  * Content-Type Mismatch Probing
+  * Null Byte Injection Detection
+  * Open Redirect Parameter Detection
+  * Insecure Cookie Flags (Missing `Secure` / `HttpOnly`)
 
-* **Traffic Storm & DoS Defense Suite (4 Checks):**
+* **Traffic Storm & DoS Defense Suite (8 Checks):**
   * Rate Limiting & HTTP 429 Backoff (detects missing rate limiters and `Retry-After` headers)
   * Payload Size Limits & HTTP 413 (tests oversized body handling to prevent buffer OOM crashes)
   * Slowloris Read Timeout Defense (tests resilience against slow byte-drip socket exhaustion)
   * Idempotency Deduplication (tests duplicate transaction handling with idempotency keys)
+  * Concurrent Burst Avalanche
+  * Chunked Transfer Starvation
+  * ReDoS Regex Lockup Probe
+  * High-Concurrency Connection Pooling Saturation
 
 ---
 
-### 2. Interactive Chaos Proxy (Port 3001)
-Point your frontend (React, Vue, iOS, Android) or HTTP client to `http://127.0.0.1:3001`. 
-Configure fault profiles on the dashboard to test how your frontend handles:
-* Simulated 503 outages
-* Artificial 2G/3G network latency
-* Bandwidth throttling
-* Broken connections and truncated responses
+### 4. Interactive Chaos Proxy & Developer Workbench
+Point your frontend (React, Vue, iOS, Android) or microservices to `http://127.0.0.1:3001`:
+* **1-Click Quick Presets:** Extreme Jitter, Packet Drop, Slow 3G, Corrupted JSON, 503 Outage.
+* **Custom Rule Builder:** Configure latency, error injections, bandwidth throttling, and body corruption with path and method filters.
+* **Live Request Inspector:** Real-time HTTP log with status codes, round-trip durations, active toxic tags, and formatted response viewer.
 
 ---
 
-### 3. Live Traffic Inspector
-Inspect every HTTP request passing through the proxy in real time with status pills, measured latency, client IP, and active fault annotations.
-
----
-
-## Security & Local Permissions
+## Security & Local Confinement
 
 FaultMesh runs locally with strict least-privilege principles:
-* **Zero Child Processes:** FaultMesh does not spawn shells or execute external binaries (`child_process.exec` is not used).
-* **Strict Path Confinement:** The dashboard web server applies canonical path jailing to prevent directory traversal outside `dist/dashboard`.
-* **In-Memory Telemetry:** Telemetry and request payloads are kept in an ephemeral in-memory ring buffer; nothing is logged to disk.
-* **Non-Destructive Probing:** All security probes (canaries, traversal, storm bursts) are read-only and inert.
+* **Zero External Runtime Dependencies:** Pure native Node.js (`node:http`, `node:net`, `node:fs`, `node:crypto`).
+* **Strict Path Confinement:** Dashboard HTTP server applies canonical path jailing to prevent directory traversal.
+* **In-Memory Telemetry:** Telemetry and request payloads are kept in an ephemeral in-memory ring buffer; nothing is sent to external servers.
+* **Non-Destructive Probing:** All security probes are read-only and inert.
 
-For full architectural details, see [docs/SECURITY.md](docs/SECURITY.md).
+For full details, see [docs/SECURITY.md](docs/SECURITY.md).
 
 ---
 
 ## License
 
 MIT License.
-
